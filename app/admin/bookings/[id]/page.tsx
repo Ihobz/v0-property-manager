@@ -1,0 +1,338 @@
+"use client"
+
+import { useState, useEffect } from "react"
+import { useParams, useRouter } from "next/navigation"
+import Image from "next/image"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Badge } from "@/components/ui/badge"
+import { Separator } from "@/components/ui/separator"
+import { bookings, properties } from "@/lib/data"
+import { Calendar, Users, DollarSign, CheckCircle, XCircle, ArrowLeft, Download, User, Bed, Bath } from "lucide-react"
+// Change the import from auth-context to auth-provider
+import { useAuth } from "@/lib/auth-provider"
+
+export default function BookingDetailsPage() {
+  const params = useParams()
+  const router = useRouter()
+  const bookingId = params.id as string
+  const booking = bookings.find((b) => b.id === bookingId)
+  const property = booking ? properties.find((p) => p.id === booking.propertyId) : null
+
+  const [cleaningFee, setCleaningFee] = useState(booking?.cleaningFee || 0)
+  const [confirmationMessage, setConfirmationMessage] = useState("")
+
+  const { isAuthenticated } = useAuth()
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      router.push("/admin/login")
+    }
+  }, [isAuthenticated, router])
+
+  if (!booking || !property) {
+    return <div className="container py-12">Booking not found</div>
+  }
+
+  if (!isAuthenticated) {
+    return null // We'll redirect in the useEffect
+  }
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "confirmed":
+        return "bg-green-100 text-green-800"
+      case "awaiting_payment":
+        return "bg-yellow-100 text-yellow-800"
+      case "awaiting_confirmation":
+        return "bg-blue-100 text-blue-800"
+      case "cancelled":
+        return "bg-red-100 text-red-800"
+      default:
+        return "bg-gray-100 text-gray-800"
+    }
+  }
+
+  const handleConfirmBooking = () => {
+    // In a real app, this would update the booking status in the database
+    setConfirmationMessage("Booking confirmed successfully!")
+  }
+
+  const handleRejectBooking = () => {
+    // In a real app, this would update the booking status in the database
+    setConfirmationMessage("Booking rejected successfully!")
+  }
+
+  return (
+    <div className="container py-12">
+      <Button variant="ghost" className="mb-6 text-gouna-blue hover:text-gouna-blue-dark" onClick={() => router.back()}>
+        <ArrowLeft className="h-4 w-4 mr-2" /> Back to Bookings
+      </Button>
+
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
+        <div>
+          <h1 className="text-3xl font-bold text-gouna-blue-dark">Booking #{booking.id}</h1>
+          <p className="text-gray-600">Created on {new Date(booking.createdAt).toLocaleDateString()}</p>
+        </div>
+        <Badge className={`${getStatusColor(booking.status)} text-sm px-3 py-1 mt-2 md:mt-0`}>
+          {booking.status.replace("_", " ").charAt(0).toUpperCase() + booking.status.replace("_", " ").slice(1)}
+        </Badge>
+      </div>
+
+      {confirmationMessage && (
+        <div className="bg-green-100 text-green-800 p-4 rounded-md mb-8">{confirmationMessage}</div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-2">
+          <Tabs defaultValue="details">
+            <TabsList className="mb-6">
+              <TabsTrigger value="details">Booking Details</TabsTrigger>
+              <TabsTrigger value="payment">Payment</TabsTrigger>
+              <TabsTrigger value="documents">Documents</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="details">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-gouna-blue-dark">Booking Information</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-500 mb-1">Property</h3>
+                      <p className="font-semibold">{property.title}</p>
+                      <p className="text-sm text-gray-600">{property.location}</p>
+                    </div>
+
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-500 mb-1">Guest</h3>
+                      <p className="font-semibold">{booking.name}</p>
+                      <p className="text-sm text-gray-600">{booking.email}</p>
+                      <p className="text-sm text-gray-600">{booking.phone}</p>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    <div className="flex items-start">
+                      <Calendar className="h-5 w-5 text-gouna-blue mr-2 mt-0.5" />
+                      <div>
+                        <h3 className="text-sm font-medium text-gray-500 mb-1">Check-in</h3>
+                        <p className="font-semibold">{booking.checkIn}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start">
+                      <Calendar className="h-5 w-5 text-gouna-blue mr-2 mt-0.5" />
+                      <div>
+                        <h3 className="text-sm font-medium text-gray-500 mb-1">Check-out</h3>
+                        <p className="font-semibold">{booking.checkOut}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start">
+                      <Users className="h-5 w-5 text-gouna-blue mr-2 mt-0.5" />
+                      <div>
+                        <h3 className="text-sm font-medium text-gray-500 mb-1">Guests</h3>
+                        <p className="font-semibold">{booking.guests}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-500 mb-3">Pricing</h3>
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <span>Base Price</span>
+                        <span>${booking.basePrice}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Cleaning Fee</span>
+                        <span>${booking.cleaningFee || 0}</span>
+                      </div>
+                      <Separator className="my-2" />
+                      <div className="flex justify-between font-semibold">
+                        <span>Total</span>
+                        <span>${booking.totalPrice}</span>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="payment">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-gouna-blue-dark">Payment Information</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {booking.paymentProof ? (
+                    <div>
+                      <h3 className="text-sm font-medium text-gray-500 mb-3">Payment Proof</h3>
+                      <div className="relative h-80 rounded-md overflow-hidden border">
+                        <Image
+                          src={booking.paymentProof || "/placeholder.svg"}
+                          alt="Payment Proof"
+                          fill
+                          className="object-contain"
+                        />
+                      </div>
+                      <div className="mt-4 flex justify-end">
+                        <Button variant="outline" className="flex items-center">
+                          <Download className="h-4 w-4 mr-2" /> Download
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <DollarSign className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                      <h3 className="text-lg font-semibold text-gray-600 mb-2">No Payment Proof Uploaded</h3>
+                      <p className="text-gray-500">The guest has not uploaded payment proof yet.</p>
+                    </div>
+                  )}
+
+                  <Separator />
+
+                  <div>
+                    <h3 className="text-sm font-medium text-gray-500 mb-3">Add Cleaning Fee</h3>
+                    <div className="flex items-end gap-4">
+                      <div className="flex-1">
+                        <Label htmlFor="cleaning-fee">Cleaning Fee ($)</Label>
+                        <Input
+                          id="cleaning-fee"
+                          type="number"
+                          value={cleaningFee}
+                          onChange={(e) => setCleaningFee(Number(e.target.value))}
+                        />
+                      </div>
+                      <Button className="bg-gouna-blue hover:bg-gouna-blue-dark text-white">Update Fee</Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="documents">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-gouna-blue-dark">Tenant Documents</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {booking.tenantIds && booking.tenantIds.length > 0 ? (
+                    <div className="space-y-6">
+                      {booking.tenantIds.map((id, index) => (
+                        <div key={index}>
+                          <h3 className="text-sm font-medium text-gray-500 mb-3">Tenant ID #{index + 1}</h3>
+                          <div className="relative h-80 rounded-md overflow-hidden border">
+                            <Image
+                              src={id || "/placeholder.svg"}
+                              alt={`Tenant ID ${index + 1}`}
+                              fill
+                              className="object-contain"
+                            />
+                          </div>
+                          <div className="mt-4 flex justify-end">
+                            <Button variant="outline" className="flex items-center">
+                              <Download className="h-4 w-4 mr-2" /> Download
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-8">
+                      <User className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                      <h3 className="text-lg font-semibold text-gray-600 mb-2">No IDs Uploaded</h3>
+                      <p className="text-gray-500">The guest has not uploaded any identification documents yet.</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+        </div>
+
+        <div>
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-gouna-blue-dark">Actions</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {booking.status === "awaiting_confirmation" && (
+                <>
+                  <Button className="w-full bg-green-600 hover:bg-green-700 text-white" onClick={handleConfirmBooking}>
+                    <CheckCircle className="h-4 w-4 mr-2" /> Confirm Booking
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full text-red-600 border-red-600 hover:bg-red-50"
+                    onClick={handleRejectBooking}
+                  >
+                    <XCircle className="h-4 w-4 mr-2" /> Reject Booking
+                  </Button>
+                </>
+              )}
+
+              {booking.status === "confirmed" && (
+                <Button variant="outline" className="w-full text-red-600 border-red-600 hover:bg-red-50">
+                  <XCircle className="h-4 w-4 mr-2" /> Cancel Booking
+                </Button>
+              )}
+
+              {booking.status === "awaiting_payment" && (
+                <div className="text-center p-4 bg-yellow-50 rounded-md">
+                  <p className="text-yellow-800 mb-2">Waiting for payment proof</p>
+                  <p className="text-sm text-yellow-700">The guest has been notified to upload payment proof.</p>
+                </div>
+              )}
+
+              <Button variant="outline" className="w-full">
+                Send Message to Guest
+              </Button>
+            </CardContent>
+          </Card>
+
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle className="text-gouna-blue-dark">Property Preview</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="relative h-48 rounded-md overflow-hidden mb-4">
+                <Image
+                  src={property.images[0] || "/placeholder.svg"}
+                  alt={property.title}
+                  fill
+                  className="object-cover"
+                />
+              </div>
+              <h3 className="font-semibold mb-1">{property.title}</h3>
+              <p className="text-sm text-gray-600 mb-4">{property.location}</p>
+              <div className="grid grid-cols-3 gap-2 text-sm text-gray-600">
+                <div className="flex flex-col items-center p-2 bg-gray-50 rounded">
+                  <Bed className="h-4 w-4 mb-1" />
+                  <span>{property.bedrooms}</span>
+                </div>
+                <div className="flex flex-col items-center p-2 bg-gray-50 rounded">
+                  <Bath className="h-4 w-4 mb-1" />
+                  <span>{property.bathrooms}</span>
+                </div>
+                <div className="flex flex-col items-center p-2 bg-gray-50 rounded">
+                  <Users className="h-4 w-4 mb-1" />
+                  <span>{property.guests}</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  )
+}
