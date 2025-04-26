@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -10,7 +10,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { AlertCircle, Loader2 } from "lucide-react"
-import { getSupabaseBrowserClient } from "@/lib/supabase/client"
 import { useAuth } from "@/lib/auth-provider"
 
 export default function LoginPage() {
@@ -18,40 +17,54 @@ export default function LoginPage() {
   const [password, setPassword] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [debugInfo, setDebugInfo] = useState<any>(null)
   const router = useRouter()
-  const { user } = useAuth()
+  const { user, signIn } = useAuth()
 
   // If user is already logged in, redirect to admin dashboard
-  if (user) {
-    router.push("/admin")
-    return null
-  }
+  useEffect(() => {
+    if (user) {
+      console.log("LoginPage: User already logged in, redirecting to admin dashboard")
+      router.push("/admin")
+    }
+  }, [user, router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+    setDebugInfo(null)
 
     try {
+      console.log("LoginPage: Attempting to sign in with email:", email)
       setIsLoading(true)
-      const supabase = getSupabaseBrowserClient()
 
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
+      const { success, error: signInError } = await signIn(email, password)
 
-      if (error) {
-        throw error
+      if (!success) {
+        console.error("LoginPage: Sign in failed:", signInError)
+        setDebugInfo({ signInError })
+        throw new Error(signInError || "Failed to sign in")
       }
 
+      console.log("LoginPage: Sign in successful, redirecting to admin dashboard")
       // Redirect to admin dashboard
       router.push("/admin")
     } catch (err: any) {
-      console.error("Error signing in:", err)
+      console.error("LoginPage: Error signing in:", err)
       setError(err.message || "Failed to sign in")
+      setDebugInfo({ error: err.message || "Unknown error" })
     } finally {
       setIsLoading(false)
     }
+  }
+
+  // If already logged in, show loading state
+  if (user) {
+    return (
+      <div className="container flex items-center justify-center min-h-[calc(100vh-8rem)]">
+        <Loader2 className="h-8 w-8 animate-spin text-gouna-blue" />
+      </div>
+    )
   }
 
   return (
@@ -114,6 +127,17 @@ export default function LoginPage() {
               )}
             </Button>
           </form>
+
+          {debugInfo && (
+            <div className="mt-4">
+              <details className="text-xs">
+                <summary className="cursor-pointer text-gray-500">Debug Information</summary>
+                <pre className="mt-2 p-2 bg-gray-100 rounded overflow-auto max-h-40">
+                  {JSON.stringify(debugInfo, null, 2)}
+                </pre>
+              </details>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

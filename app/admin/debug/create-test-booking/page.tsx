@@ -1,117 +1,107 @@
 "use client"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ArrowLeft, Loader2 } from "lucide-react"
+import { useRouter } from "next/navigation"
 import { createTestBooking } from "@/app/api/bookings/actions"
 import { toast } from "@/components/ui/use-toast"
-import { useAuth } from "@/lib/auth-provider"
 
 export default function CreateTestBookingPage() {
   const router = useRouter()
-  const { isAdmin } = useAuth()
-  const [isCreating, setIsCreating] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
   const [result, setResult] = useState<any>(null)
-
-  // Redirect if not admin
-  if (!isAdmin) {
-    router.push("/admin/login")
-    return null
-  }
+  const [error, setError] = useState<string | null>(null)
 
   const handleCreateTestBooking = async () => {
-    setIsCreating(true)
-    try {
-      const result = await createTestBooking()
-      setResult(result)
+    setIsLoading(true)
+    setError(null)
+    setResult(null)
 
-      if (result.success) {
-        toast({
-          title: "Success",
-          description: result.message || "Test booking created successfully",
-        })
-      } else {
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: result.error || "Failed to create test booking",
-        })
+    try {
+      const response = await createTestBooking()
+
+      if (!response.success) {
+        throw new Error(response.error || "Failed to create test booking")
       }
-    } catch (error) {
-      console.error("Error creating test booking:", error)
+
+      setResult(response)
+      toast({
+        title: "Success",
+        description: response.message || "Test booking created successfully",
+      })
+    } catch (err) {
+      console.error("Error creating test booking:", err)
+      setError(err instanceof Error ? err.message : "Unknown error occurred")
       toast({
         variant: "destructive",
         title: "Error",
-        description: "An unexpected error occurred",
+        description: err instanceof Error ? err.message : "Failed to create test booking",
       })
     } finally {
-      setIsCreating(false)
+      setIsLoading(false)
     }
   }
 
   return (
     <div className="container py-12">
-      <Button variant="ghost" className="mb-6" onClick={() => router.push("/admin")}>
-        <ArrowLeft className="mr-2 h-4 w-4" /> Back to Dashboard
+      <Button variant="ghost" className="mb-6" onClick={() => router.push("/admin/debug")}>
+        <ArrowLeft className="mr-2 h-4 w-4" /> Back to Debug
       </Button>
 
       <Card>
         <CardHeader>
           <CardTitle>Create Test Booking</CardTitle>
-          <CardDescription>Create a test booking with sample data for debugging purposes.</CardDescription>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-gray-500 mb-4">This will create a test booking with the following details:</p>
-          <ul className="list-disc pl-5 space-y-1 text-sm">
-            <li>Name: Test User</li>
-            <li>Email: test@example.com</li>
-            <li>Check-in: 7 days from today</li>
-            <li>Check-out: 14 days from today</li>
-            <li>Status: Awaiting Payment</li>
-          </ul>
-        </CardContent>
-        <CardFooter className="flex justify-between">
-          <Button variant="outline" onClick={() => router.push("/admin/bookings")}>
-            Cancel
-          </Button>
-          <Button
-            onClick={handleCreateTestBooking}
-            disabled={isCreating}
-            className="bg-gouna-blue hover:bg-gouna-blue-dark text-white"
-          >
-            {isCreating ? (
+          <p className="mb-4 text-gray-600">
+            This tool creates a test booking with sample data to help debug the booking system.
+          </p>
+
+          <Button onClick={handleCreateTestBooking} disabled={isLoading} className="mb-6">
+            {isLoading ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Creating...
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Creating Test Booking...
               </>
             ) : (
               "Create Test Booking"
             )}
           </Button>
-        </CardFooter>
-      </Card>
 
-      {result && (
-        <Card className="mt-6">
-          <CardHeader>
-            <CardTitle>Result</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <pre className="bg-gray-100 p-4 rounded-md overflow-auto text-xs">{JSON.stringify(result, null, 2)}</pre>
-          </CardContent>
-          <CardFooter>
-            {result.success && (
-              <Button
-                onClick={() => router.push("/admin/bookings")}
-                className="bg-gouna-blue hover:bg-gouna-blue-dark text-white"
-              >
-                View Bookings
-              </Button>
-            )}
-          </CardFooter>
-        </Card>
-      )}
+          {error && (
+            <div className="p-4 mb-4 bg-red-50 border border-red-200 rounded-md">
+              <h3 className="text-red-700 font-medium mb-2">Error</h3>
+              <p className="text-red-600">{error}</p>
+            </div>
+          )}
+
+          {result && (
+            <div className="p-4 bg-green-50 border border-green-200 rounded-md">
+              <h3 className="text-green-700 font-medium mb-2">Success</h3>
+              <p>{result.message}</p>
+
+              {result.booking && (
+                <div className="mt-4">
+                  <h4 className="font-medium">Booking Details:</h4>
+                  <pre className="mt-2 p-2 bg-gray-100 rounded overflow-auto max-h-60 text-xs">
+                    {JSON.stringify(result.booking, null, 2)}
+                  </pre>
+
+                  <div className="mt-4 flex gap-2">
+                    <Button size="sm" onClick={() => router.push(`/admin/bookings/${result.booking.id}`)}>
+                      View Booking
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => router.push("/admin/bookings")}>
+                      Go to Bookings
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }

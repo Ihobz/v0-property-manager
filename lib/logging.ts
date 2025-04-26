@@ -5,51 +5,63 @@
 export type LogLevel = "info" | "warning" | "error" | "debug"
 
 // Define log categories
-export type LogCategory = "system" | "booking" | "property" | "user" | "payment" | "upload"
+export type LogCategory = "system" | "booking" | "property" | "user" | "payment" | "upload" | "auth"
 
 // Client-side logging function that sends logs to the server
 async function logToServer(level: LogLevel, message: string, details?: any) {
   try {
+    // Always log to console first
+    console[level === "error" ? "error" : level === "warning" ? "warn" : "log"](
+      `[${level.toUpperCase()}] ${message}`,
+      details || "",
+    )
+
+    // Don't attempt to send logs to server during SSR
+    if (typeof window === "undefined") {
+      return
+    }
+
+    // Prepare the log data
+    const logData = {
+      level,
+      message: message.substring(0, 1000), // Truncate long messages
+      details: details || {},
+      timestamp: new Date().toISOString(),
+    }
+
     // Use fetch to send logs to a server endpoint
-    await fetch("/api/log", {
+    const response = await fetch("/api/log", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        level,
-        message,
-        details,
-        timestamp: new Date().toISOString(),
-      }),
+      body: JSON.stringify(logData),
     })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      console.warn(`Log server returned error (${response.status}):`, errorData)
+    }
   } catch (error) {
-    // Fall back to console logging if the server request fails
-    console[level === "error" ? "error" : level === "warning" ? "warn" : "log"](
-      `[${level.toUpperCase()}] ${message}`,
-      details,
-    )
+    // Just log to console if the server request fails
+    console.warn(`Failed to send log to server: ${error instanceof Error ? error.message : "Unknown error"}`)
   }
 }
 
 // Convenience functions for common log levels
 export async function logInfo(message: string, details?: any) {
-  console.log(`[INFO] ${message}`, details)
   return logToServer("info", message, details)
 }
 
 export async function logError(message: string, details?: any) {
-  console.error(`[ERROR] ${message}`, details)
   return logToServer("error", message, details)
 }
 
 export async function logWarning(message: string, details?: any) {
-  console.warn(`[WARNING] ${message}`, details)
   return logToServer("warning", message, details)
 }
 
 export async function logDebug(message: string, details?: any) {
-  console.debug(`[DEBUG] ${message}`, details)
   return logToServer("debug", message, details)
 }
 

@@ -58,9 +58,9 @@ export async function createBooking(bookingData: any) {
     await logBookingEvent("Booking created successfully", "info", { bookingId: data.id })
 
     // Get property details for the email
-    const { data: property, propertyError } = await supabase
+    const { data: property, error: propertyError } = await supabase
       .from("properties")
-      .select("name, location")
+      .select("title, name, location")
       .eq("id", bookingData.property_id)
       .single()
 
@@ -78,7 +78,7 @@ export async function createBooking(bookingData: any) {
           email: bookingData.email,
           name: bookingData.name,
           bookingId: data.id,
-          propertyTitle: property.name,
+          propertyTitle: property.title || property.name,
           checkIn: bookingData.check_in,
           checkOut: bookingData.check_out,
           totalPrice: bookingData.total_price,
@@ -112,6 +112,31 @@ export async function getBookings() {
     console.log("Server Action: getBookings - Starting to fetch bookings")
     const supabase = createServerSupabaseClient()
 
+    // Check if the connection is working
+    try {
+      const { data: connectionTest, error: connectionError } = await supabase
+        .from("bookings")
+        .select("count(*)", { count: "exact", head: true })
+
+      if (connectionError) {
+        console.error("Server Action: getBookings - Database connection error:", connectionError)
+        return {
+          bookings: [],
+          error: "Database connection error: " + connectionError.message,
+          details: connectionError,
+        }
+      }
+
+      console.log("Server Action: getBookings - Database connection successful")
+    } catch (connErr) {
+      console.error("Server Action: getBookings - Failed to test database connection:", connErr)
+      return {
+        bookings: [],
+        error: "Failed to connect to database",
+        details: connErr instanceof Error ? connErr.message : String(connErr),
+      }
+    }
+
     // Log the query we're about to make
     console.log("Server Action: getBookings - Executing query to fetch all bookings")
 
@@ -121,6 +146,7 @@ export async function getBookings() {
         *,
         properties:property_id (
           id,
+          title,
           name,
           location,
           price
@@ -131,7 +157,15 @@ export async function getBookings() {
     if (error) {
       console.error("Server Action: getBookings - Error fetching bookings:", error)
       await logBookingEvent("Error fetching all bookings", "error", { error })
-      return { bookings: [], error: error.message }
+      return {
+        bookings: [],
+        error: error.message,
+        details: {
+          code: error.code,
+          hint: error.hint,
+          details: error.details,
+        },
+      }
     }
 
     console.log(`Server Action: getBookings - Successfully fetched ${data?.length || 0} bookings`)
@@ -145,7 +179,11 @@ export async function getBookings() {
 
       if (countError) {
         console.error("Server Action: getBookings - Error checking bookings table:", countError)
-        return { bookings: [], error: "Error checking bookings table: " + countError.message }
+        return {
+          bookings: [],
+          error: "Error checking bookings table: " + countError.message,
+          details: countError,
+        }
       }
 
       console.log(`Server Action: getBookings - Bookings table has ${count} records`)

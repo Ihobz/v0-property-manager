@@ -42,7 +42,7 @@ export interface Database {
           phone: string
           property_id: string
           status: string
-          tenant_id: string | null
+          tenant_id: string[] | null
           total_price: number
           updated_at: string | null
         }
@@ -60,7 +60,7 @@ export interface Database {
           phone: string
           property_id: string
           status?: string
-          tenant_id?: string | null
+          tenant_id?: string[] | null
           total_price: number
           updated_at?: string | null
         }
@@ -78,7 +78,7 @@ export interface Database {
           phone?: string
           property_id?: string
           status?: string
-          tenant_id?: string | null
+          tenant_id?: string[] | null
           total_price?: number
           updated_at?: string | null
         }
@@ -126,46 +126,46 @@ export interface Database {
       }
       properties: {
         Row: {
-          title: string
-          short_description: string
+          bathrooms: number
+          bedrooms: number
+          created_at: string
           description: string
+          guests: number
+          id: string
           location: string
           price: number
-          bedrooms: number
-          bathrooms: number
-          guests: number
+          title: string
+          short_description: string
           amenities: string[]
           featured: boolean
-          id: string
-          created_at: string
         }
         Insert: {
-          title: string
-          short_description: string
+          bathrooms: number
+          bedrooms: number
+          created_at?: string
           description: string
+          guests: number
+          id?: string
           location: string
           price: number
-          bedrooms: number
-          bathrooms: number
-          guests: number
+          title: string
+          short_description: string
           amenities: string[]
           featured: boolean
-          id?: string
-          created_at?: string
         }
         Update: {
-          title?: string
-          short_description?: string
+          bathrooms?: number
+          bedrooms?: number
+          created_at?: string
           description?: string
+          guests?: number
+          id?: string
           location?: string
           price?: number
-          bedrooms?: number
-          bathrooms?: number
-          guests?: number
+          title?: string
+          short_description?: string
           amenities?: string[]
           featured?: boolean
-          id?: string
-          created_at?: string
         }
         Relationships: []
       }
