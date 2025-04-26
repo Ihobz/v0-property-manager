@@ -1,3 +1,4 @@
+// Update the debug-upload component to include more detailed error reporting
 "use client"
 
 import type React from "react"
@@ -14,27 +15,58 @@ export function DebugUpload() {
   const [result, setResult] = useState<any>(null)
   const [error, setError] = useState<string | null>(null)
   const [blobConfig, setBlobConfig] = useState<any>(null)
+  const [detailedLogs, setDetailedLogs] = useState<string[]>([])
+
+  const addLog = (message: string) => {
+    setDetailedLogs((prev) => [...prev, `${new Date().toISOString().split("T")[1].split(".")[0]} - ${message}`])
+  }
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setFile(e.target.files[0])
       setResult(null)
       setError(null)
+      setDetailedLogs([])
+      addLog(`File selected: ${e.target.files[0].name} (${e.target.files[0].size} bytes)`)
     }
   }
 
   const checkBlobConfig = async () => {
     try {
+      addLog("Checking Blob configuration...")
       const response = await fetch("/api/check-blob-config")
       const data = await response.json()
       setBlobConfig(data)
+      addLog(`Blob config check result: ${data.isConfigured ? "Configured" : "Not configured"}`)
       return data
     } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to check Blob configuration"
+      addLog(`Blob config check error: ${message}`)
       setBlobConfig({
         isConfigured: false,
-        message: err instanceof Error ? err.message : "Failed to check Blob configuration",
+        message,
       })
       return null
+    }
+  }
+
+  const runDetailedTest = async () => {
+    try {
+      addLog("Running detailed Blob test...")
+      const response = await fetch("/api/debug/blob-test")
+      const data = await response.json()
+      addLog(`Detailed test result: ${data.success ? "Success" : "Failed"}`)
+      if (data.url) {
+        addLog(`Test file uploaded to: ${data.url}`)
+      }
+      if (data.error) {
+        addLog(`Test error: ${data.error}`)
+      }
+      return data
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to run detailed test"
+      addLog(`Detailed test error: ${message}`)
+      return { success: false, error: message }
     }
   }
 
@@ -44,24 +76,46 @@ export function DebugUpload() {
     setIsUploading(true)
     setResult(null)
     setError(null)
+    setDetailedLogs([])
+    addLog(`Starting upload process for file: ${file.name}`)
 
     // First check if Blob is configured
     const configResult = await checkBlobConfig()
     if (configResult && !configResult.isConfigured) {
       setError(`Blob is not properly configured: ${configResult.message}`)
+      addLog(`Blob configuration error: ${configResult.message}`)
+      setIsUploading(false)
+      return
+    }
+
+    // Run detailed test
+    const testResult = await runDetailedTest()
+    if (!testResult.success) {
+      setError(`Blob test failed: ${testResult.error}`)
+      addLog(`Blob test failed: ${testResult.error}`)
       setIsUploading(false)
       return
     }
 
     try {
+      addLog(`Uploading file: ${file.name}, size: ${file.size}, type: ${file.type}`)
       const uploadResult = await uploadPropertyImage(file)
       setResult(uploadResult)
+      addLog(`Upload result: ${uploadResult.success ? "Success" : "Failed"}`)
 
       if (!uploadResult.success) {
         setError(uploadResult.error || "Upload failed")
+        addLog(`Upload error: ${uploadResult.error || "Unknown error"}`)
+      } else {
+        addLog(`File uploaded successfully to: ${uploadResult.url}`)
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error")
+      const message = err instanceof Error ? err.message : "Unknown error"
+      setError(message)
+      addLog(`Upload exception: ${message}`)
+      if (err instanceof Error && err.stack) {
+        addLog(`Stack trace: ${err.stack}`)
+      }
     } finally {
       setIsUploading(false)
     }
@@ -110,6 +164,10 @@ export function DebugUpload() {
             <Button onClick={checkBlobConfig} variant="outline">
               Check Blob Config
             </Button>
+
+            <Button onClick={runDetailedTest} variant="outline">
+              Run Detailed Test
+            </Button>
           </div>
 
           {error && (
@@ -146,6 +204,17 @@ export function DebugUpload() {
                   <img src={result.url || "/placeholder.svg"} alt="Uploaded" className="mt-2 max-h-40 rounded-md" />
                 </div>
               )}
+            </div>
+          )}
+
+          {detailedLogs.length > 0 && (
+            <div className="p-3 bg-gray-50 rounded-md text-sm">
+              <p className="font-medium mb-2">Detailed Logs:</p>
+              <div className="bg-black text-green-400 p-2 rounded font-mono text-xs h-48 overflow-y-auto">
+                {detailedLogs.map((log, i) => (
+                  <div key={i}>{log}</div>
+                ))}
+              </div>
             </div>
           )}
         </div>

@@ -1,43 +1,30 @@
-import { put } from "@vercel/blob"
-import { nanoid } from "nanoid"
-
-// Improved Blob upload function with better error handling
+// Update the uploadPropertyImage function to use the API route
 export async function uploadPropertyImage(file: File) {
   try {
     console.log("Starting image upload to Vercel Blob:", file.name, file.type, file.size)
 
-    // Check if BLOB_READ_WRITE_TOKEN is available directly from process.env
-    // This is more reliable than using the config object
-    if (!process.env.BLOB_READ_WRITE_TOKEN) {
-      console.error("BLOB_READ_WRITE_TOKEN is not defined in environment variables")
-      return {
-        url: null,
-        success: false,
-        error: "Blob token is not configured in environment variables",
-      }
-    }
+    // Create form data
+    const formData = new FormData()
+    formData.append("file", file)
+    formData.append("folder", "property-images")
 
-    const blob = await put(`property-images/${nanoid()}-${file.name}`, file, {
-      access: "public",
+    // Use the API route instead of direct Blob access
+    const response = await fetch("/api/upload", {
+      method: "POST",
+      body: formData,
     })
 
-    console.log("Image upload successful:", blob.url)
-    return { url: blob.url, success: true }
-  } catch (error) {
-    console.error("Error uploading property image:", error)
-
-    // More detailed error information
-    const errorMessage = error instanceof Error ? `Upload error: ${error.message}` : "Unknown error during upload"
-
-    // Check for specific error types
-    if (error instanceof Error && error.message.includes("token")) {
-      return {
-        url: null,
-        success: false,
-        error: "Authentication error with Blob token. Please check your BLOB_READ_WRITE_TOKEN.",
-      }
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error || `Upload failed with status: ${response.status}`)
     }
 
+    const result = await response.json()
+
+    return { url: result.url, success: true }
+  } catch (error) {
+    console.error("Error uploading property image:", error)
+    const errorMessage = error instanceof Error ? `Upload error: ${error.message}` : "Unknown error during upload"
     return {
       url: null,
       success: false,
@@ -46,29 +33,28 @@ export async function uploadPropertyImage(file: File) {
   }
 }
 
+// Update the other upload functions similarly
 export async function uploadPaymentProof(file: File) {
   try {
-    // Check if BLOB_READ_WRITE_TOKEN is available directly
-    if (!process.env.BLOB_READ_WRITE_TOKEN) {
-      console.error("BLOB_READ_WRITE_TOKEN is not defined in environment variables")
-      return {
-        url: null,
-        success: false,
-        error: "Blob token is not configured in environment variables",
-      }
-    }
+    const formData = new FormData()
+    formData.append("file", file)
+    formData.append("folder", "payment-proofs")
 
-    const blob = await put(`payment-proofs/${nanoid()}-${file.name}`, file, {
-      access: "public",
+    const response = await fetch("/api/upload", {
+      method: "POST",
+      body: formData,
     })
 
-    return { url: blob.url, success: true }
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error || `Upload failed with status: ${response.status}`)
+    }
+
+    const result = await response.json()
+    return { url: result.url, success: true }
   } catch (error) {
     console.error("Error uploading payment proof:", error)
-
-    // More detailed error information
     const errorMessage = error instanceof Error ? `Upload error: ${error.message}` : "Unknown error during upload"
-
     return {
       url: null,
       success: false,
@@ -79,27 +65,25 @@ export async function uploadPaymentProof(file: File) {
 
 export async function uploadTenantDocument(file: File) {
   try {
-    // Check if BLOB_READ_WRITE_TOKEN is available directly
-    if (!process.env.BLOB_READ_WRITE_TOKEN) {
-      console.error("BLOB_READ_WRITE_TOKEN is not defined in environment variables")
-      return {
-        url: null,
-        success: false,
-        error: "Blob token is not configured in environment variables",
-      }
-    }
+    const formData = new FormData()
+    formData.append("file", file)
+    formData.append("folder", "tenant-documents")
 
-    const blob = await put(`tenant-documents/${nanoid()}-${file.name}`, file, {
-      access: "public",
+    const response = await fetch("/api/upload", {
+      method: "POST",
+      body: formData,
     })
 
-    return { url: blob.url, success: true }
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error || `Upload failed with status: ${response.status}`)
+    }
+
+    const result = await response.json()
+    return { url: result.url, success: true }
   } catch (error) {
     console.error("Error uploading tenant document:", error)
-
-    // More detailed error information
     const errorMessage = error instanceof Error ? `Upload error: ${error.message}` : "Unknown error during upload"
-
     return {
       url: null,
       success: false,
