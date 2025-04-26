@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -20,7 +21,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { toast } from "@/components/ui/use-toast"
-import { encodeBookingId, formatBookingIdForDisplay } from "@/lib/booking-utils"
+import { formatBookingIdForDisplay } from "@/lib/booking-utils"
 
 export default function BookingsPage() {
   const { isAdmin } = useAuth()
@@ -213,9 +214,8 @@ export default function BookingsPage() {
       }
 
       // If verification passes, navigate to the booking details page
-      const encodedId = encodeBookingId(bookingId)
-      console.log(`Navigating to booking details with ID: ${bookingId}, encoded: ${encodedId}`)
-      router.push(`/admin/bookings/${encodedId}`)
+      // We'll use window.location for a hard navigation
+      window.location.href = `/admin/bookings/${bookingId}`
     } catch (error) {
       console.error("Error in handleViewBooking:", error)
       setVerificationError("An unexpected error occurred")
@@ -355,20 +355,11 @@ export default function BookingsPage() {
                       </td>
                       <td className="px-4 py-3 text-sm">
                         <div className="flex flex-wrap gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8 px-3"
-                            onClick={() => handleViewBooking(booking.id)}
-                            disabled={isVerifyingBooking}
-                          >
-                            {isVerifyingBooking ? (
-                              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                            ) : (
-                              <Eye className="h-4 w-4 mr-1" />
-                            )}{" "}
-                            View
-                          </Button>
+                          <Link href={`/admin/bookings/${booking.id}`} passHref>
+                            <Button variant="outline" size="sm" className="h-8 px-3" as="a">
+                              <Eye className="h-4 w-4 mr-1" /> View
+                            </Button>
+                          </Link>
 
                           {booking.status === "awaiting_confirmation" && booking.payment_proof && (
                             <Button

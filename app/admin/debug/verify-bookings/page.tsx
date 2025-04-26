@@ -4,6 +4,7 @@ import type React from "react"
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -12,7 +13,7 @@ import { ArrowLeft, Loader2, CheckCircle, XCircle, ExternalLink } from "lucide-r
 import { useAuth } from "@/lib/auth-provider"
 import { toast } from "@/components/ui/use-toast"
 import { getBookings, verifyBookingId } from "@/app/api/bookings/actions"
-import { encodeBookingId, decodeBookingId, formatBookingIdForDisplay } from "@/lib/booking-utils"
+import { formatBookingIdForDisplay } from "@/lib/booking-utils"
 
 export default function VerifyBookingsPage() {
   const { isAdmin } = useAuth()
@@ -61,23 +62,15 @@ export default function VerifyBookingsPage() {
       // Step 1: Verify the booking ID exists
       const { exists, error: verifyError } = await verifyBookingId(bookingId)
 
-      // Step 2: Encode the booking ID for URL
-      const encodedId = encodeBookingId(bookingId)
-
-      // Step 3: Decode the encoded ID to simulate what happens in the page component
-      const decodedId = decodeBookingId(encodedId)
-
       // Add the result to our verification list
       setVerificationResults((prev) => [
         {
           id: bookingId,
           timestamp: new Date().toISOString(),
           originalId: bookingId,
-          encodedId,
-          decodedId,
           exists,
           error: verifyError,
-          success: exists && !verifyError && bookingId === decodedId,
+          success: exists && !verifyError,
         },
         ...prev,
       ])
@@ -93,7 +86,7 @@ export default function VerifyBookingsPage() {
 
       toast({
         title: "Verification Successful",
-        description: "Booking ID exists and encoding/decoding works correctly",
+        description: "Booking ID exists in the database",
       })
     } catch (error) {
       console.error("Error verifying booking:", error)
@@ -115,25 +108,9 @@ export default function VerifyBookingsPage() {
     }
   }
 
-  // Fixed navigation function
-  const navigateToBooking = (bookingId: string) => {
-    try {
-      // Ensure we're using the raw ID directly without additional encoding
-      // This is important because the [id] parameter in the route will handle the decoding
-      router.push(`/admin/bookings/${bookingId}`)
-
-      toast({
-        title: "Navigating to booking",
-        description: `Opening booking ${formatBookingIdForDisplay(bookingId)}`,
-      })
-    } catch (error) {
-      console.error("Navigation error:", error)
-      toast({
-        variant: "destructive",
-        title: "Navigation Error",
-        description: "Failed to navigate to booking details",
-      })
-    }
+  // We'll use a direct link instead of programmatic navigation
+  const getBookingLink = (bookingId: string) => {
+    return `/admin/bookings/${bookingId}`
   }
 
   if (isLoading) {
@@ -180,9 +157,11 @@ export default function VerifyBookingsPage() {
                             "Verify"
                           )}
                         </Button>
-                        <Button variant="default" size="sm" onClick={() => navigateToBooking(booking.id)}>
-                          View <ExternalLink className="h-3 w-3 ml-1" />
-                        </Button>
+                        <Link href={getBookingLink(booking.id)}>
+                          <Button variant="default" size="sm">
+                            View <ExternalLink className="h-3 w-3 ml-1" />
+                          </Button>
+                        </Link>
                       </div>
                     </div>
                   </div>
@@ -252,14 +231,6 @@ export default function VerifyBookingsPage() {
                       <p className="font-mono bg-gray-100 p-1 rounded">{result.originalId}</p>
                     </div>
                     <div>
-                      <p className="text-gray-500">Encoded ID:</p>
-                      <p className="font-mono bg-gray-100 p-1 rounded">{result.encodedId}</p>
-                    </div>
-                    <div>
-                      <p className="text-gray-500">Decoded ID:</p>
-                      <p className="font-mono bg-gray-100 p-1 rounded">{result.decodedId}</p>
-                    </div>
-                    <div>
                       <p className="text-gray-500">Exists in Database:</p>
                       <p>{result.exists ? "Yes" : "No"}</p>
                     </div>
@@ -273,14 +244,18 @@ export default function VerifyBookingsPage() {
                   )}
 
                   <div className="mt-3 flex justify-end">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => navigateToBooking(result.originalId)}
-                      disabled={!result.exists}
-                    >
-                      Test Navigation <ExternalLink className="h-3 w-3 ml-1" />
-                    </Button>
+                    {result.exists && (
+                      <Link href={getBookingLink(result.originalId)}>
+                        <Button variant="outline" size="sm">
+                          Test Navigation <ExternalLink className="h-3 w-3 ml-1" />
+                        </Button>
+                      </Link>
+                    )}
+                    {!result.exists && (
+                      <Button variant="outline" size="sm" disabled>
+                        Test Navigation <ExternalLink className="h-3 w-3 ml-1" />
+                      </Button>
+                    )}
                   </div>
                 </div>
               ))}
