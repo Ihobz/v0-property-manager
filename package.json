@@ -59,12 +59,12 @@
     "vaul": "^0.9.6",
     "zod": "^3.24.1",
     "@supabase/supabase-js": "latest",
-    "@vercel/blob": "latest",
-    "nanoid": "latest",
     "@supabase/auth-helpers-nextjs": "latest",
     "dotenv": "latest",
     "fs": "latest",
-    "path": "latest"
+    "path": "latest",
+    "@vercel/blob": "latest",
+    "nanoid": "latest"
   },
   "devDependencies": {
     "@types/node": "^22",
