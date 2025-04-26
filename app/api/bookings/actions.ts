@@ -157,3 +157,86 @@ export async function updateBookingCleaningFee(id: string, cleaningFee: number) 
     return { success: false, error: "Failed to update booking cleaning fee" }
   }
 }
+
+// Update booking payment proof
+export async function updatePaymentProof(id: string, paymentProofUrl: string) {
+  try {
+    const supabase = createServerSupabaseClient()
+
+    const { error } = await supabase
+      .from("bookings")
+      .update({
+        payment_proof: paymentProofUrl,
+        status: "awaiting_confirmation", // Update status when payment proof is uploaded
+      })
+      .eq("id", id)
+
+    if (error) {
+      console.error("Error updating payment proof:", error)
+      return { success: false, error: error.message }
+    }
+
+    // Revalidate paths
+    revalidatePath("/admin/bookings")
+    revalidatePath(`/admin/bookings/${id}`)
+    revalidatePath(`/upload/${id}`)
+
+    return { success: true }
+  } catch (error) {
+    console.error("Error in updatePaymentProof:", error)
+    return { success: false, error: "Failed to update payment proof" }
+  }
+}
+
+// Add tenant ID document
+export async function addTenantIdDocument(id: string, documentUrl: string) {
+  try {
+    const supabase = createServerSupabaseClient()
+
+    // First get the current booking to check existing tenant IDs
+    const { data: booking, error: fetchError } = await supabase
+      .from("bookings")
+      .select("tenant_id")
+      .eq("id", id)
+      .single()
+
+    if (fetchError) {
+      console.error("Error fetching booking:", fetchError)
+      return { success: false, error: fetchError.message }
+    }
+
+    // Create or update the tenant_id array
+    let tenantIds: string[] = []
+
+    if (booking.tenant_id) {
+      // If tenant_id exists and is an array, add the new document URL
+      if (Array.isArray(booking.tenant_id)) {
+        tenantIds = [...booking.tenant_id, documentUrl]
+      } else if (typeof booking.tenant_id === "string") {
+        // If it's a string (single URL), convert to array with both URLs
+        tenantIds = [booking.tenant_id, documentUrl]
+      }
+    } else {
+      // If no tenant_id exists yet, create a new array with this document
+      tenantIds = [documentUrl]
+    }
+
+    // Update the booking with the new tenant_id array
+    const { error } = await supabase.from("bookings").update({ tenant_id: tenantIds }).eq("id", id)
+
+    if (error) {
+      console.error("Error adding tenant ID document:", error)
+      return { success: false, error: error.message }
+    }
+
+    // Revalidate paths
+    revalidatePath("/admin/bookings")
+    revalidatePath(`/admin/bookings/${id}`)
+    revalidatePath(`/upload/${id}`)
+
+    return { success: true }
+  } catch (error) {
+    console.error("Error in addTenantIdDocument:", error)
+    return { success: false, error: "Failed to add tenant ID document" }
+  }
+}
