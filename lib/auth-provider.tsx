@@ -1,8 +1,7 @@
 "use client"
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
-import { createClientSupabaseClient } from "./supabase/client"
-import { useRouter, usePathname } from "next/navigation"
+import { getSupabaseBrowserClient } from "./supabase/client"
 
 // Define the auth context type
 type AuthContextType = {
@@ -16,7 +15,15 @@ type AuthContextType = {
 }
 
 // Create the auth context
-const AuthContext = createContext<AuthContextType | undefined>(undefined)
+const AuthContext = createContext<AuthContextType>({
+  isAuthenticated: false,
+  isAdmin: false,
+  isLoading: true,
+  error: null,
+  login: async () => ({ success: false, error: "Not implemented" }),
+  logout: async () => {},
+  checkSession: async () => {},
+})
 
 // Auth provider props
 interface AuthProviderProps {
@@ -29,14 +36,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const [isAdmin, setIsAdmin] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const router = useRouter()
-  const pathname = usePathname()
+  const [retryCount, setRetryCount] = useState(0)
+  const MAX_RETRIES = 3
 
   // Check if the user is authenticated and is an admin
   const checkSession = async () => {
     try {
       setError(null)
-      const supabase = createClientSupabaseClient()
+      console.log("Checking session...")
+
+      const supabase = getSupabaseBrowserClient()
 
       // Get the session
       const {
@@ -53,11 +62,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
       }
 
       if (!session) {
+        console.log("No session found")
         setIsAuthenticated(false)
         setIsAdmin(false)
         return
       }
 
+      console.log("Session found, user is authenticated")
       setIsAuthenticated(true)
 
       // Check if the user is an admin
@@ -65,16 +76,27 @@ export function AuthProvider({ children }: AuthProviderProps) {
         const { data: adminData, error: adminError } = await supabase
           .from("admins")
           .select("*")
-          .eq("user_id", session.user.id)
+          .eq("email", session.user.email)
           .single()
 
-        if (adminError) {
+        if (adminError && adminError.code !== "PGRST116") {
+          // PGRST116 is "no rows returned"
           console.error("AuthProvider: Error checking admin status:", adminError)
+
+          // If this is a network error and we haven't exceeded max retries
+          if (adminError.message.includes("fetch") && retryCount < MAX_RETRIES) {
+            console.log(`Retrying admin check (${retryCount + 1}/${MAX_RETRIES})`)
+            setRetryCount((prev) => prev + 1)
+            // Don't update state yet, we'll retry
+            return
+          }
+
           setError(`Admin check error: ${adminError.message}`)
           setIsAdmin(false)
           return
         }
 
+        console.log("Admin check result:", !!adminData)
         setIsAdmin(!!adminData)
       } catch (adminCheckError) {
         console.error("AuthProvider: Error checking admin status:", adminCheckError)
@@ -93,7 +115,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const login = async (email: string, password: string) => {
     try {
       setError(null)
-      const supabase = createClientSupabaseClient()
+      setIsLoading(true)
+      console.log("Attempting login for:", email)
+
+      const supabase = getSupabaseBrowserClient()
 
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
@@ -114,32 +139,69 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setIsAuthenticated(true)
 
       // Check if the user is an admin
-      await checkSession()
+      try {
+        const { data: adminData, error: adminError } = await supabase
+          .from("admins")
+          .select("*")
+          .eq("email", email)
+          .single()
 
-      return { success: true }
+        if (adminError && adminError.code !== "PGRST116") {
+          console.error("AuthProvider: Error checking admin status:", adminError)
+          setError(`Admin verification failed: ${adminError.message}`)
+        }
+
+        if (!adminData) {
+          // Sign out if not an admin
+          console.log("User is not an admin, signing out")
+          setError("Not authorized as admin")
+          await supabase.auth.signOut()
+          setIsAuthenticated(false)
+          setIsAdmin(false)
+          return { success: false, error: "Not authorized as admin" }
+        }
+
+        console.log("Login successful for admin:", email)
+        setIsAdmin(true)
+        setError(null)
+        return { success: true }
+      } catch (err) {
+        console.error("AuthProvider: Exception checking admin status:", err)
+        setError(`Admin verification error: ${err instanceof Error ? err.message : "Unknown error"}`)
+        await supabase.auth.signOut()
+        setIsAuthenticated(false)
+        setIsAdmin(false)
+        return { success: false, error: "Error checking admin status" }
+      }
     } catch (error) {
       console.error("AuthProvider: Unexpected error during login:", error)
-      const errorMessage = error instanceof Error ? error.message : "Unknown login error"
-      setError(`Login failed: ${errorMessage}`)
-      return { success: false, error: errorMessage }
+      setError(`Login failed: ${error instanceof Error ? error.message : "Unknown error"}`)
+      return { success: false, error: "An unexpected error occurred" }
+    } finally {
+      setIsLoading(false)
     }
   }
 
   // Logout function
   const logout = async () => {
     try {
-      const supabase = createClientSupabaseClient()
+      setIsLoading(true)
+      const supabase = getSupabaseBrowserClient()
       await supabase.auth.signOut()
       setIsAuthenticated(false)
       setIsAdmin(false)
-      router.push("/admin/login")
+      console.log("User logged out successfully")
+      // Use window.location for a hard redirect
+      window.location.href = "/admin/login"
     } catch (error) {
       console.error("AuthProvider: Error during logout:", error)
       setError(`Logout failed: ${error instanceof Error ? error.message : "Unknown error"}`)
+    } finally {
+      setIsLoading(false)
     }
   }
 
-  // Check session on mount and when pathname changes
+  // Check session on mount and when retryCount changes
   useEffect(() => {
     const initAuth = async () => {
       setIsLoading(true)
@@ -154,7 +216,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
 
     initAuth()
-  }, [pathname])
+  }, [retryCount])
 
   // Provide the auth context
   return (

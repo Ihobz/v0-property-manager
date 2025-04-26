@@ -3,7 +3,6 @@
 import type React from "react"
 
 import { useState } from "react"
-import { useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-provider"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -17,8 +16,7 @@ export default function AdminLoginPage() {
   const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
-  const { signIn } = useAuth()
-  const router = useRouter()
+  const { login } = useAuth()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -26,9 +24,10 @@ export default function AdminLoginPage() {
     setIsLoading(true)
 
     try {
-      const { success, error } = await signIn(email, password)
+      const { success, error } = await login(email, password)
       if (success) {
-        router.push("/admin")
+        // Use window.location for a hard redirect
+        window.location.href = "/admin"
       } else {
         setError(error || "Failed to sign in")
       }
@@ -90,7 +89,11 @@ export default function AdminLoginPage() {
         <CardFooter className="flex justify-center">
           <p className="text-sm text-gray-500">
             Forgot your password?{" "}
-            <Button variant="link" className="p-0 h-auto" onClick={() => router.push("/admin/reset-password")}>
+            <Button
+              variant="link"
+              className="p-0 h-auto"
+              onClick={() => (window.location.href = "/admin/reset-password")}
+            >
               Reset it here
             </Button>
           </p>

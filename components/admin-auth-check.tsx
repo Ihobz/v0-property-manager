@@ -18,9 +18,11 @@ export function AdminAuthCheck({ children }: AdminAuthCheckProps) {
   const { isAuthenticated, isAdmin, isLoading, error, checkSession } = useAuth()
   const router = useRouter()
 
+  // Immediate redirect if not authenticated and not loading
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
-      router.push("/admin/login")
+      // Use window.location for a hard redirect instead of router.push
+      window.location.href = "/admin/login"
     }
   }, [isLoading, isAuthenticated, router])
 
@@ -56,7 +58,7 @@ export function AdminAuthCheck({ children }: AdminAuthCheckProps) {
             </Alert>
           </CardContent>
           <CardFooter className="flex justify-between">
-            <Button variant="outline" onClick={() => router.push("/admin/login")}>
+            <Button variant="outline" onClick={() => (window.location.href = "/admin/login")}>
               Go to Login
             </Button>
             <Button onClick={() => checkSession()}>Retry</Button>
@@ -67,24 +69,9 @@ export function AdminAuthCheck({ children }: AdminAuthCheckProps) {
   }
 
   if (!isAuthenticated) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Card className="w-[350px]">
-          <CardHeader>
-            <CardTitle>Not Authenticated</CardTitle>
-            <CardDescription>You need to log in to access this page</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p>Redirecting to login page...</p>
-          </CardContent>
-          <CardFooter>
-            <Button onClick={() => router.push("/admin/login")} className="w-full">
-              Go to Login
-            </Button>
-          </CardFooter>
-        </Card>
-      </div>
-    )
+    // Immediate redirect using window.location for a hard redirect
+    window.location.href = "/admin/login"
+    return null
   }
 
   if (!isAdmin) {
@@ -98,6 +85,11 @@ export function AdminAuthCheck({ children }: AdminAuthCheckProps) {
           <CardContent>
             <p>Your account doesn't have the necessary permissions to access the admin area.</p>
           </CardContent>
+          <CardFooter>
+            <Button onClick={() => (window.location.href = "/")} className="w-full">
+              Go to Homepage
+            </Button>
+          </CardFooter>
         </Card>
       </div>
     )
