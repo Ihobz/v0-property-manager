@@ -1,23 +1,39 @@
 import { createClient } from "@supabase/supabase-js"
-import type { Database } from "@/lib/types/database.types"
+import type { Database } from "../types/database.types"
 
-// Create a singleton instance for client-side usage
+// Singleton pattern to avoid multiple instances
 let supabaseClient: ReturnType<typeof createClient<Database>> | null = null
 
 export function createClientSupabaseClient() {
   if (supabaseClient) return supabaseClient
 
-  supabaseClient = createClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  )
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-  return supabaseClient
+  if (!supabaseUrl || !supabaseKey) {
+    console.error("Missing Supabase environment variables for client")
+    throw new Error("Supabase configuration is missing")
+  }
+
+  try {
+    supabaseClient = createClient<Database>(supabaseUrl, supabaseKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+      },
+      global: {
+        fetch: (...args) => {
+          return fetch(...args)
+        },
+      },
+    })
+    return supabaseClient
+  } catch (error) {
+    console.error("Error creating Supabase client:", error)
+    throw new Error(`Failed to initialize Supabase client: ${error instanceof Error ? error.message : String(error)}`)
+  }
 }
 
-// Add the missing export as an alias
+// Add the missing export that's required for deployment
 export const getSupabaseBrowserClient = createClientSupabaseClient
-
-// For backward compatibility
-// Removing the conflicting declaration
-// export const createClient = createClientSupabaseClient

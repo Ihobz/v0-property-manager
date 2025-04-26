@@ -7,8 +7,19 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { useAuth } from "@/lib/auth-provider"
-import { getBookings, updateBookingStatus, verifyBookingId } from "@/app/api/bookings/actions"
-import { Loader2, Search, ArrowLeft, CheckCircle, XCircle, Eye, Calendar, AlertTriangle } from "lucide-react"
+import { createTestBooking, updateBookingStatus, verifyBookingId } from "@/app/api/bookings/actions"
+import {
+  Loader2,
+  Search,
+  ArrowLeft,
+  CheckCircle,
+  XCircle,
+  Eye,
+  Calendar,
+  AlertTriangle,
+  Plus,
+  Database,
+} from "lucide-react"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,6 +32,7 @@ import {
 } from "@/components/ui/alert-dialog"
 import { toast } from "@/components/ui/use-toast"
 import { formatBookingIdForDisplay } from "@/lib/booking-utils"
+import { useBookings } from "@/hooks/use-bookings"
 
 export default function BookingsPage() {
   const { isAdmin } = useAuth()
@@ -28,9 +40,7 @@ export default function BookingsPage() {
   const searchParams = useSearchParams()
   const statusFilter = searchParams.get("status") || "all"
 
-  const [bookings, setBookings] = useState<any[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { bookings, isLoading, error, debugInfo, isMockData } = useBookings()
   const [filteredBookings, setFilteredBookings] = useState<any[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [statusValue, setStatusValue] = useState(statusFilter)
@@ -45,43 +55,14 @@ export default function BookingsPage() {
   const [isVerifyingBooking, setIsVerifyingBooking] = useState(false)
   const [verificationError, setVerificationError] = useState<string | null>(null)
 
-  // Debug state
-  const [debugInfo, setDebugInfo] = useState<any>(null)
+  // State for creating test booking
+  const [isCreatingTestBooking, setIsCreatingTestBooking] = useState(false)
 
   useEffect(() => {
     if (!isAdmin) {
       router.push("/admin/login")
     }
   }, [isAdmin, router])
-
-  // Fetch bookings directly in the component
-  useEffect(() => {
-    async function fetchBookings() {
-      try {
-        setIsLoading(true)
-        console.log("Fetching bookings...")
-        const { bookings: fetchedBookings, error: fetchError } = await getBookings()
-
-        if (fetchError) {
-          console.error("Error from getBookings:", fetchError)
-          setDebugInfo({ error: fetchError })
-          throw new Error(fetchError)
-        }
-
-        console.log("Fetched bookings:", fetchedBookings)
-        setDebugInfo({ bookingsCount: fetchedBookings?.length || 0, bookings: fetchedBookings })
-        setBookings(fetchedBookings || [])
-      } catch (err) {
-        console.error("Error fetching bookings:", err)
-        setError(err instanceof Error ? err.message : "Failed to load bookings")
-        setDebugInfo({ catchError: err instanceof Error ? err.message : String(err) })
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    fetchBookings()
-  }, [])
 
   useEffect(() => {
     if (bookings) {
@@ -99,7 +80,7 @@ export default function BookingsPage() {
           (booking) =>
             booking.name?.toLowerCase().includes(term) ||
             booking.email?.toLowerCase().includes(term) ||
-            booking.properties?.title?.toLowerCase().includes(term) ||
+            (booking.properties?.title || booking.properties?.name)?.toLowerCase().includes(term) ||
             booking.id?.toLowerCase().includes(term),
         )
       }
@@ -125,12 +106,8 @@ export default function BookingsPage() {
           description: "The booking has been confirmed successfully.",
         })
 
-        // Update the local state to reflect the change
-        setBookings((prevBookings) =>
-          prevBookings.map((booking) =>
-            booking.id === selectedBookingId ? { ...booking, status: "confirmed" } : booking,
-          ),
-        )
+        // Refresh the page to get updated data
+        window.location.reload()
       } else {
         toast({
           variant: "destructive",
@@ -163,12 +140,8 @@ export default function BookingsPage() {
           description: "The booking has been cancelled successfully.",
         })
 
-        // Update the local state to reflect the change
-        setBookings((prevBookings) =>
-          prevBookings.map((booking) =>
-            booking.id === selectedBookingId ? { ...booking, status: "cancelled" } : booking,
-          ),
-        )
+        // Refresh the page to get updated data
+        window.location.reload()
       } else {
         toast({
           variant: "destructive",
@@ -194,6 +167,12 @@ export default function BookingsPage() {
     try {
       setIsVerifyingBooking(true)
       setVerificationError(null)
+
+      // If using mock data, just navigate to the booking page
+      if (isMockData) {
+        router.push(`/admin/bookings/${bookingId}`)
+        return
+      }
 
       // First verify the booking ID exists
       console.log("Verifying booking ID:", bookingId)
@@ -241,6 +220,37 @@ export default function BookingsPage() {
     router.push(`/admin/properties/calendar/${propertyId}`)
   }
 
+  // Handle creating a test booking
+  const handleCreateTestBooking = async () => {
+    setIsCreatingTestBooking(true)
+    try {
+      const result = await createTestBooking()
+      if (result.success) {
+        toast({
+          title: "Test Booking Created",
+          description: result.message || "A test booking has been created successfully.",
+        })
+
+        // Refresh the page to get updated data
+        window.location.reload()
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: result.error || "Failed to create test booking.",
+        })
+      }
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "An unexpected error occurred while creating a test booking.",
+      })
+    } finally {
+      setIsCreatingTestBooking(false)
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="container py-12 flex items-center justify-center">
@@ -270,6 +280,24 @@ export default function BookingsPage() {
                 <pre className="text-xs overflow-auto max-h-40">{JSON.stringify(debugInfo, null, 2)}</pre>
               </div>
             )}
+
+            <div className="mt-4">
+              <Button
+                onClick={handleCreateTestBooking}
+                disabled={isCreatingTestBooking}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+              >
+                {isCreatingTestBooking ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Creating Test Booking...
+                  </>
+                ) : (
+                  <>
+                    <Plus className="mr-2 h-4 w-4" /> Create Test Booking
+                  </>
+                )}
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -325,6 +353,22 @@ export default function BookingsPage() {
           </Select>
         </div>
       </div>
+
+      {/* Mock Data Notice */}
+      {isMockData && (
+        <Card className="mb-4 bg-blue-50 border-blue-200">
+          <CardContent className="p-4">
+            <div className="flex items-center">
+              <Database className="h-5 w-5 text-blue-500 mr-2" />
+              <h3 className="font-medium text-blue-700">Using Mock Data</h3>
+            </div>
+            <p className="mt-1 text-sm text-blue-600">
+              The system is currently using mock data because the database connection is unavailable. This is normal in
+              preview environments or when database credentials are not configured.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Debug info */}
       {debugInfo && (
@@ -389,7 +433,7 @@ export default function BookingsPage() {
                             <Eye className="h-4 w-4 mr-1" /> View
                           </Button>
 
-                          {booking.status === "awaiting_confirmation" && booking.payment_proof && (
+                          {booking.status === "awaiting_confirmation" && booking.payment_proof_url && (
                             <Button
                               variant="outline"
                               size="sm"
@@ -446,9 +490,18 @@ export default function BookingsPage() {
           {/* Add a button to create a test booking */}
           <Button
             className="mt-4 bg-gouna-blue hover:bg-gouna-blue-dark text-white"
-            onClick={() => router.push("/admin/debug/create-test-booking")}
+            onClick={handleCreateTestBooking}
+            disabled={isCreatingTestBooking}
           >
-            Create Test Booking
+            {isCreatingTestBooking ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Creating...
+              </>
+            ) : (
+              <>
+                <Plus className="mr-2 h-4 w-4" /> Create Test Booking
+              </>
+            )}
           </Button>
         </div>
       )}

@@ -106,90 +106,88 @@ export async function createBooking(bookingData: any) {
   }
 }
 
-// Get all bookings
+// Get all bookings with improved debugging
 export async function getBookings() {
   try {
     console.log("Server Action: getBookings - Starting to fetch bookings")
-    const supabase = createServerSupabaseClient()
 
-    // Check if the connection is working
-    try {
-      const { data: connectionTest, error: connectionError } = await supabase
-        .from("bookings")
-        .select("count(*)", { count: "exact", head: true })
-
-      if (connectionError) {
-        console.error("Server Action: getBookings - Database connection error:", connectionError)
-        return {
-          bookings: [],
-          error: "Database connection error: " + connectionError.message,
-          details: connectionError,
-        }
-      }
-
-      console.log("Server Action: getBookings - Database connection successful")
-    } catch (connErr) {
-      console.error("Server Action: getBookings - Failed to test database connection:", connErr)
+    // Check if environment variables are configured
+    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+      console.error("Server Action: getBookings - Missing Supabase environment variables")
       return {
         bookings: [],
-        error: "Failed to connect to database",
-        details: connErr instanceof Error ? connErr.message : String(connErr),
-      }
-    }
-
-    // Log the query we're about to make
-    console.log("Server Action: getBookings - Executing query to fetch all bookings")
-
-    const { data, error } = await supabase
-      .from("bookings")
-      .select(`
-        *,
-        properties:property_id (
-          id,
-          title,
-          name,
-          location,
-          price
-        )
-      `)
-      .order("created_at", { ascending: false })
-
-    if (error) {
-      console.error("Server Action: getBookings - Error fetching bookings:", error)
-      await logBookingEvent("Error fetching all bookings", "error", { error })
-      return {
-        bookings: [],
-        error: error.message,
+        error: "Database configuration error: Missing Supabase environment variables",
         details: {
-          code: error.code,
-          hint: error.hint,
-          details: error.details,
+          hasSupabaseUrl: !!process.env.SUPABASE_URL,
+          hasSupabaseKey: !!process.env.SUPABASE_ANON_KEY,
         },
       }
     }
 
-    console.log(`Server Action: getBookings - Successfully fetched ${data?.length || 0} bookings`)
+    let supabase
+    try {
+      supabase = createServerSupabaseClient()
+      console.log("Server Action: getBookings - Supabase client created successfully")
+    } catch (clientError) {
+      console.error("Server Action: getBookings - Failed to create Supabase client:", clientError)
+      return {
+        bookings: [],
+        error: "Failed to initialize database client",
+        details: clientError instanceof Error ? clientError.message : String(clientError),
+      }
+    }
 
-    // If no bookings found, check if the table exists and has data
-    if (!data || data.length === 0) {
-      console.log("Server Action: getBookings - No bookings found, checking if table exists")
+    // Set a timeout for the database query
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error("Database query timed out")), 5000)
+    })
 
-      // Check if the bookings table exists and has data
-      const { count, error: countError } = await supabase.from("bookings").select("*", { count: "exact", head: true })
+    // Try to fetch bookings with a timeout
+    try {
+      const bookingsPromise = supabase
+        .from("bookings")
+        .select(`
+          *,
+          properties:property_id (
+            id,
+            title,
+            name,
+            location,
+            price
+          )
+        `)
+        .order("created_at", { ascending: false })
 
-      if (countError) {
-        console.error("Server Action: getBookings - Error checking bookings table:", countError)
+      // Race the query against the timeout
+      const { data, error } = (await Promise.race([
+        bookingsPromise,
+        timeoutPromise.then(() => ({ data: null, error: { message: "Query timed out" } })),
+      ])) as any
+
+      if (error) {
+        console.error("Server Action: getBookings - Error fetching bookings:", error)
+        await logBookingEvent("Error fetching all bookings", "error", { error })
         return {
           bookings: [],
-          error: "Error checking bookings table: " + countError.message,
-          details: countError,
+          error: error.message,
+          details: {
+            code: error.code,
+            hint: error.hint,
+            details: error.details,
+          },
         }
       }
 
-      console.log(`Server Action: getBookings - Bookings table has ${count} records`)
+      console.log(`Server Action: getBookings - Successfully fetched ${data?.length || 0} bookings`)
+      return { bookings: data || [], error: null }
+    } catch (queryError) {
+      console.error("Server Action: getBookings - Query error:", queryError)
+      return {
+        bookings: [],
+        error: "Database query error",
+        details: queryError instanceof Error ? queryError.message : String(queryError),
+      }
     }
-
-    return { bookings: data || [], error: null }
   } catch (error) {
     console.error("Server Action: getBookings - Unexpected error:", error)
     await logBookingEvent("Unexpected error in getBookings", "error", { error })
@@ -215,52 +213,67 @@ export async function getBookingById(id: string) {
       return { booking: null, error: "No valid booking ID provided" }
     }
 
-    const supabase = createServerSupabaseClient()
+    try {
+      const supabase = createServerSupabaseClient()
 
-    // Log the exact query we're about to make
-    console.log(`Server Action: Executing query for booking ID: "${bookingId}"`)
+      // Set a timeout for the database query
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error("Database query timed out")), 5000)
+      })
 
-    const { data, error } = await supabase
-      .from("bookings")
-      .select(`
-        *,
-        properties:property_id (
-          id,
-          name,
-          location,
-          price,
-          images,
-          bedrooms,
-          bathrooms,
-          guests
-        )
-      `)
-      .eq("id", bookingId)
-      .single()
+      // Try to fetch the booking with a timeout
+      const bookingPromise = supabase
+        .from("bookings")
+        .select(`
+          *,
+          properties:property_id (
+            id,
+            name,
+            title,
+            location,
+            price,
+            images,
+            bedrooms,
+            bathrooms,
+            guests
+          )
+        `)
+        .eq("id", bookingId)
+        .single()
 
-    if (error) {
-      console.error(`Server Action: Error fetching booking with ID "${bookingId}":`, error)
-      await logBookingEvent(`Error fetching booking with ID: ${bookingId}`, "error", { error })
-      return {
-        booking: null,
-        error: error.message,
-        details: {
-          code: error.code,
-          hint: error.hint,
-          details: error.details,
-        },
+      // Race the query against the timeout
+      const { data, error } = (await Promise.race([
+        bookingPromise,
+        timeoutPromise.then(() => ({ data: null, error: { message: "Query timed out" } })),
+      ])) as any
+
+      if (error) {
+        console.error(`Server Action: Error fetching booking with ID "${bookingId}":`, error)
+        await logBookingEvent(`Error fetching booking with ID: ${bookingId}`, "error", { error })
+        return {
+          booking: null,
+          error: error.message,
+          details: {
+            code: error.code,
+            hint: error.hint,
+            details: error.details,
+          },
+        }
       }
-    }
 
-    if (!data) {
-      console.error(`Server Action: No booking found with ID "${bookingId}"`)
-      await logBookingEvent(`No booking found with ID: ${bookingId}`, "warning")
-      return { booking: null, error: "Booking not found" }
-    }
+      if (!data) {
+        console.error(`Server Action: No booking found with ID "${bookingId}"`)
+        await logBookingEvent(`No booking found with ID: ${bookingId}`, "warning")
+        return { booking: null, error: "Booking not found" }
+      }
 
-    console.log(`Server Action: Successfully retrieved booking with ID "${bookingId}"`)
-    await logBookingEvent(`Successfully retrieved booking with ID: ${bookingId}`, "info")
-    return { booking: data, error: null }
+      console.log(`Server Action: Successfully retrieved booking with ID "${bookingId}"`)
+      await logBookingEvent(`Successfully retrieved booking with ID: ${bookingId}`, "info")
+      return { booking: data, error: null }
+    } catch (dbError) {
+      console.error("Database error in getBookingById:", dbError)
+      throw dbError
+    }
   } catch (error) {
     console.error("Server Action: Unexpected error:", error)
     await logBookingEvent("Unexpected error in getBookingById", "error", { error })
@@ -287,6 +300,7 @@ export async function getBookingsByEmail(email: string) {
         created_at,
         properties:property_id (
           name,
+          title,
           location
         )
       `)
@@ -353,7 +367,7 @@ export async function updateBookingStatus(id: string, status: string) {
         email: booking.email,
         name: booking.name,
         bookingId: booking.id,
-        propertyTitle: booking.properties.name,
+        propertyTitle: booking.properties.title || booking.properties.name,
         checkIn: booking.check_in,
         checkOut: booking.check_out,
         status,
@@ -459,7 +473,7 @@ export async function updatePaymentProof(id: string, paymentProofUrl: string) {
     const { error } = await supabase
       .from("bookings")
       .update({
-        payment_proof: paymentProofUrl,
+        payment_proof_url: paymentProofUrl,
         status: "awaiting_confirmation", // Update status when payment proof is uploaded
       })
       .eq("id", bookingId)
@@ -612,7 +626,10 @@ export async function createTestBooking() {
     const supabase = createServerSupabaseClient()
 
     // First, get a property to associate with the booking
-    const { data: properties, propertyError } = await supabase.from("properties").select("id, name, price").limit(1)
+    const { data: properties, error: propertyError } = await supabase
+      .from("properties")
+      .select("id, title, name, price")
+      .limit(1)
 
     if (propertyError || !properties || properties.length === 0) {
       console.error("Error fetching property for test booking:", propertyError)
@@ -623,6 +640,11 @@ export async function createTestBooking() {
     }
 
     const property = properties[0]
+    console.log("Found property for test booking:", {
+      id: property.id,
+      name: property.name || property.title,
+      price: property.price,
+    })
 
     // Create a test booking
     const testBooking = {
@@ -638,6 +660,8 @@ export async function createTestBooking() {
       status: "awaiting_payment",
       created_at: new Date().toISOString(),
     }
+
+    console.log("Inserting test booking:", testBooking)
 
     const { data, error } = await supabase.from("bookings").insert(testBooking).select().single()
 
@@ -656,7 +680,7 @@ export async function createTestBooking() {
     return {
       success: true,
       booking: data,
-      message: `Test booking created successfully for property "${property.name}"`,
+      message: `Test booking created successfully for property "${property.name || property.title}"`,
     }
   } catch (error) {
     console.error("Unexpected error creating test booking:", error)
@@ -665,5 +689,61 @@ export async function createTestBooking() {
       success: false,
       error: error instanceof Error ? error.message : "An unexpected error occurred",
     }
+  }
+}
+
+// Add a function to get table information for debugging
+export async function getTableInfo(tableName: string) {
+  try {
+    console.log(`Getting table info for: ${tableName}`)
+    const supabase = createServerSupabaseClient()
+
+    // Query to get column information
+    const { data, error } = await supabase.rpc("get_table_info", { table_name: tableName })
+
+    if (error) {
+      console.error(`Error getting table info for ${tableName}:`, error)
+      return { columns: [], error: error.message }
+    }
+
+    return { columns: data || [], error: null }
+  } catch (error) {
+    console.error(`Unexpected error getting table info for ${tableName}:`, error)
+    return {
+      columns: [],
+      error: error instanceof Error ? error.message : "An unexpected error occurred",
+    }
+  }
+}
+
+// Fallback function to get mock bookings when database connection fails
+export async function getMockBookingsFallback() {
+  console.log("Using mock bookings data as fallback")
+
+  // Return mock data that matches the structure of real bookings
+  return {
+    bookings: [
+      {
+        id: "mock-booking-1",
+        name: "Test User",
+        email: "test@example.com",
+        phone: "+1234567890",
+        check_in: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        check_out: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+        guests: 2,
+        base_price: 1000,
+        total_price: 1100,
+        status: "awaiting_payment",
+        created_at: new Date().toISOString(),
+        property_id: "mock-property-1",
+        properties: {
+          title: "Mock Property",
+          name: "Mock Property",
+          location: "El Gouna, Egypt",
+        },
+      },
+    ],
+    error: null,
+    isMockData: true,
   }
 }

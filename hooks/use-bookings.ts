@@ -15,7 +15,15 @@ export function useBookings() {
         setIsLoading(true)
         console.log("useBookings: Fetching bookings...")
 
-        const { bookings: fetchedBookings, error: fetchError, details } = await getBookings()
+        // Add a timeout to prevent infinite loading if the request fails
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Request timed out")), 10000),
+        )
+
+        // Race the actual request against the timeout
+        const result = (await Promise.race([getBookings(), timeoutPromise])) as any
+
+        const { bookings: fetchedBookings, error: fetchError, details } = result
 
         if (fetchError) {
           console.error("useBookings: Error from getBookings:", fetchError, details)
@@ -39,7 +47,10 @@ export function useBookings() {
       } catch (err) {
         console.error("useBookings: Error fetching bookings:", err)
         setError(err instanceof Error ? err.message : "Failed to load bookings")
-        setDebugInfo({ catchError: err instanceof Error ? err.message : String(err) })
+        setDebugInfo({
+          catchError: err instanceof Error ? err.message : String(err),
+          stack: err instanceof Error ? err.stack : undefined,
+        })
       } finally {
         setIsLoading(false)
       }

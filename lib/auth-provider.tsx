@@ -1,190 +1,184 @@
 "use client"
 
-import type React from "react"
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
+import { createClientSupabaseClient } from "./supabase/client"
+import { useRouter, usePathname } from "next/navigation"
 
-import { createContext, useContext, useEffect, useState } from "react"
-import { createClientSupabaseClient } from "@/lib/supabase/client"
-import { logAuthEvent } from "@/lib/logging"
-
+// Define the auth context type
 type AuthContextType = {
-  isAdmin: boolean | null
-  user: any | null
-  signIn: (email: string, password: string) => Promise<{ success: boolean; error?: string }>
-  signOut: () => Promise<void>
+  isAuthenticated: boolean
+  isAdmin: boolean
+  isLoading: boolean
+  error: string | null
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>
+  logout: () => Promise<void>
+  checkSession: () => Promise<void>
 }
 
-const AuthContext = createContext<AuthContextType>({
-  isAdmin: null,
-  user: null,
-  signIn: async () => ({ success: false }),
-  signOut: async () => {},
-})
+// Create the auth context
+const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [isAdmin, setIsAdmin] = useState<boolean | null>(null)
-  const [user, setUser] = useState<any | null>(null)
+// Auth provider props
+interface AuthProviderProps {
+  children: ReactNode
+}
+
+// Auth provider component
+export function AuthProvider({ children }: AuthProviderProps) {
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const router = useRouter()
+  const pathname = usePathname()
 
-  useEffect(() => {
-    const checkSession = async () => {
-      try {
-        console.log("AuthProvider: Checking session...")
-        const supabase = createClientSupabaseClient()
-
-        // Check if user is authenticated
-        const {
-          data: { session },
-        } = await supabase.auth.getSession()
-
-        console.log("AuthProvider: Session check result:", !!session)
-
-        if (session) {
-          setUser(session.user)
-
-          // Check if user is an admin
-          console.log("AuthProvider: Checking if user is admin:", session.user.email)
-          const { data: admin, error: adminError } = await supabase
-            .from("admins")
-            .select("*")
-            .eq("email", session.user.email)
-            .single()
-
-          if (adminError) {
-            console.error("AuthProvider: Error checking admin status:", adminError)
-          }
-
-          console.log("AuthProvider: Admin check result:", !!admin)
-          setIsAdmin(!!admin)
-
-          try {
-            await logAuthEvent(`User session found for ${session.user.email}`, "info")
-          } catch (logError) {
-            console.warn("Failed to log auth event:", logError)
-          }
-        } else {
-          setUser(null)
-          setIsAdmin(false)
-          try {
-            await logAuthEvent("No active user session", "info")
-          } catch (logError) {
-            console.warn("Failed to log auth event:", logError)
-          }
-        }
-      } catch (error) {
-        console.error("AuthProvider: Error checking auth session:", error)
-        setUser(null)
-        setIsAdmin(false)
-        try {
-          await logAuthEvent("Error checking auth session", "error", { error: String(error) })
-        } catch (logError) {
-          console.warn("Failed to log auth event:", logError)
-        }
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    checkSession()
-  }, [])
-
-  const signIn = async (email: string, password: string) => {
+  // Check if the user is authenticated and is an admin
+  const checkSession = async () => {
     try {
-      console.log("AuthProvider: Attempting sign in for:", email)
-      try {
-        await logAuthEvent(`Sign in attempt for ${email}`, "info")
-      } catch (logError) {
-        console.warn("Failed to log auth event:", logError)
-      }
-
+      setError(null)
       const supabase = createClientSupabaseClient()
 
-      // Sign in with email and password
+      // Get the session
+      const {
+        data: { session },
+        error: sessionError,
+      } = await supabase.auth.getSession()
+
+      if (sessionError) {
+        console.error("AuthProvider: Error getting session:", sessionError)
+        setError(`Authentication error: ${sessionError.message}`)
+        setIsAuthenticated(false)
+        setIsAdmin(false)
+        return
+      }
+
+      if (!session) {
+        setIsAuthenticated(false)
+        setIsAdmin(false)
+        return
+      }
+
+      setIsAuthenticated(true)
+
+      // Check if the user is an admin
+      try {
+        const { data: adminData, error: adminError } = await supabase
+          .from("admins")
+          .select("*")
+          .eq("user_id", session.user.id)
+          .single()
+
+        if (adminError) {
+          console.error("AuthProvider: Error checking admin status:", adminError)
+          setError(`Admin check error: ${adminError.message}`)
+          setIsAdmin(false)
+          return
+        }
+
+        setIsAdmin(!!adminData)
+      } catch (adminCheckError) {
+        console.error("AuthProvider: Error checking admin status:", adminCheckError)
+        setError(`Admin check failed: ${adminCheckError instanceof Error ? adminCheckError.message : "Unknown error"}`)
+        setIsAdmin(false)
+      }
+    } catch (error) {
+      console.error("AuthProvider: Unexpected error in checkSession:", error)
+      setError(`Session check failed: ${error instanceof Error ? error.message : "Unknown error"}`)
+      setIsAuthenticated(false)
+      setIsAdmin(false)
+    }
+  }
+
+  // Login function
+  const login = async (email: string, password: string) => {
+    try {
+      setError(null)
+      const supabase = createClientSupabaseClient()
+
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
 
       if (error) {
-        console.error("AuthProvider: Sign in error:", error)
-        try {
-          await logAuthEvent(`Sign in failed for ${email}`, "error", { error: error.message })
-        } catch (logError) {
-          console.warn("Failed to log auth event:", logError)
-        }
+        console.error("AuthProvider: Login error:", error)
+        setError(`Login failed: ${error.message}`)
         return { success: false, error: error.message }
       }
 
-      // Check if user is an admin
-      const { data: admin, error: adminError } = await supabase.from("admins").select("*").eq("email", email).single()
-
-      if (adminError) {
-        console.error("AuthProvider: Error checking admin status:", adminError)
-        try {
-          await logAuthEvent(`Error checking admin status for ${email}`, "error", { error: adminError.message })
-        } catch (logError) {
-          console.warn("Failed to log auth event:", logError)
-        }
+      if (!data.session) {
+        setError("No session returned after login")
+        return { success: false, error: "Authentication failed" }
       }
 
-      if (!admin) {
-        // Sign out if not an admin
-        console.log("AuthProvider: User is not an admin, signing out")
-        try {
-          await logAuthEvent(`User ${email} is not an admin, signing out`, "warning")
-        } catch (logError) {
-          console.warn("Failed to log auth event:", logError)
-        }
-        await supabase.auth.signOut()
-        setUser(null)
-        setIsAdmin(false)
-        return { success: false, error: "Not authorized as admin" }
-      }
+      setIsAuthenticated(true)
 
-      console.log("AuthProvider: Sign in successful for admin:", email)
-      try {
-        await logAuthEvent(`Admin sign in successful for ${email}`, "info")
-      } catch (logError) {
-        console.warn("Failed to log auth event:", logError)
-      }
-      setUser(data.user)
-      setIsAdmin(true)
+      // Check if the user is an admin
+      await checkSession()
+
       return { success: true }
     } catch (error) {
-      console.error("AuthProvider: Unexpected error during sign in:", error)
-      try {
-        await logAuthEvent("Unexpected error during sign in", "error", { error: String(error) })
-      } catch (logError) {
-        console.warn("Failed to log auth event:", logError)
-      }
-      return { success: false, error: "An unexpected error occurred" }
+      console.error("AuthProvider: Unexpected error during login:", error)
+      const errorMessage = error instanceof Error ? error.message : "Unknown login error"
+      setError(`Login failed: ${errorMessage}`)
+      return { success: false, error: errorMessage }
     }
   }
 
-  const signOut = async () => {
+  // Logout function
+  const logout = async () => {
     try {
-      console.log("AuthProvider: Signing out")
       const supabase = createClientSupabaseClient()
       await supabase.auth.signOut()
-      setUser(null)
+      setIsAuthenticated(false)
       setIsAdmin(false)
-      try {
-        await logAuthEvent("User signed out", "info")
-      } catch (logError) {
-        console.warn("Failed to log auth event:", logError)
-      }
+      router.push("/admin/login")
     } catch (error) {
-      console.error("AuthProvider: Error signing out:", error)
-      try {
-        await logAuthEvent("Error signing out", "error", { error: String(error) })
-      } catch (logError) {
-        console.warn("Failed to log auth event:", logError)
-      }
+      console.error("AuthProvider: Error during logout:", error)
+      setError(`Logout failed: ${error instanceof Error ? error.message : "Unknown error"}`)
     }
   }
 
+  // Check session on mount and when pathname changes
+  useEffect(() => {
+    const initAuth = async () => {
+      setIsLoading(true)
+      try {
+        await checkSession()
+      } catch (error) {
+        console.error("AuthProvider: Error initializing auth:", error)
+        setError(`Auth initialization failed: ${error instanceof Error ? error.message : "Unknown error"}`)
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    initAuth()
+  }, [pathname])
+
+  // Provide the auth context
   return (
-    <AuthContext.Provider value={{ isAdmin, user, signIn, signOut }}>{!isLoading && children}</AuthContext.Provider>
+    <AuthContext.Provider
+      value={{
+        isAuthenticated,
+        isAdmin,
+        isLoading,
+        error,
+        login,
+        logout,
+        checkSession,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
   )
 }
 
-export const useAuth = () => useContext(AuthContext)
+// Hook to use the auth context
+export function useAuth() {
+  const context = useContext(AuthContext)
+  if (context === undefined) {
+    throw new Error("useAuth must be used within an AuthProvider")
+  }
+  return context
+}
