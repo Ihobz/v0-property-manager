@@ -19,6 +19,12 @@ import {
   CheckCircle,
   XCircle,
   Calendar,
+  DollarSign,
+  BarChart3,
+  Percent,
+  Clock,
+  TrendingUp,
+  Users,
 } from "lucide-react"
 import { updateBookingStatus } from "@/app/api/bookings/actions"
 import {
@@ -45,6 +51,110 @@ export default function AdminDashboard() {
   const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false)
   const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
+
+  // Calculate revenue metrics
+  const revenueMetrics = {
+    totalRevenue: bookings?.reduce((sum, booking) => sum + (booking.total_price || 0), 0) || 0,
+    averageBookingValue: bookings?.length
+      ? (bookings.reduce((sum, booking) => sum + (booking.total_price || 0), 0) / bookings.length).toFixed(2)
+      : 0,
+    confirmedRevenue:
+      bookings?.filter((b) => b.status === "confirmed").reduce((sum, booking) => sum + (booking.total_price || 0), 0) ||
+      0,
+    pendingRevenue:
+      bookings
+        ?.filter((b) => b.status === "awaiting_confirmation" || b.status === "awaiting_payment")
+        .reduce((sum, booking) => sum + (booking.total_price || 0), 0) || 0,
+  }
+
+  // Calculate occupancy metrics
+  const occupancyMetrics = {
+    // Calculate total nights booked across all confirmed bookings
+    totalNightsBooked:
+      bookings
+        ?.filter((b) => b.status === "confirmed")
+        .reduce((sum, booking) => {
+          const checkIn = new Date(booking.check_in)
+          const checkOut = new Date(booking.check_out)
+          const nights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24))
+          return sum + nights
+        }, 0) || 0,
+
+    // Calculate average stay duration
+    averageStayDuration: bookings?.length
+      ? (
+          bookings.reduce((sum, booking) => {
+            const checkIn = new Date(booking.check_in)
+            const checkOut = new Date(booking.check_out)
+            const nights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24))
+            return sum + nights
+          }, 0) / bookings.length
+        ).toFixed(1)
+      : 0,
+
+    // Count upcoming check-ins (next 7 days)
+    upcomingCheckIns:
+      bookings?.filter((booking) => {
+        const checkIn = new Date(booking.check_in)
+        const today = new Date()
+        const nextWeek = new Date()
+        nextWeek.setDate(today.getDate() + 7)
+        return checkIn >= today && checkIn <= nextWeek && booking.status === "confirmed"
+      }).length || 0,
+
+    // Count upcoming check-outs (next 7 days)
+    upcomingCheckOuts:
+      bookings?.filter((booking) => {
+        const checkOut = new Date(booking.check_out)
+        const today = new Date()
+        const nextWeek = new Date()
+        nextWeek.setDate(today.getDate() + 7)
+        return checkOut >= today && checkOut <= nextWeek && booking.status === "confirmed"
+      }).length || 0,
+  }
+
+  // Calculate performance metrics
+  const performanceMetrics = {
+    // Calculate occupancy rate (simplified)
+    occupancyRate:
+      properties?.length && occupancyMetrics.totalNightsBooked
+        ? Math.min(100, Math.round((occupancyMetrics.totalNightsBooked / (properties.length * 30)) * 100))
+        : 0,
+
+    // Count bookings by property to find most popular
+    mostPopularProperty: (() => {
+      if (!bookings?.length || !properties?.length) return { name: "N/A", count: 0 }
+
+      const bookingsByProperty = bookings.reduce(
+        (acc, booking) => {
+          acc[booking.property_id] = (acc[booking.property_id] || 0) + 1
+          return acc
+        },
+        {} as Record<string, number>,
+      )
+
+      let maxCount = 0
+      let popularPropertyId = ""
+
+      Object.entries(bookingsByProperty).forEach(([propertyId, count]) => {
+        if (count > maxCount) {
+          maxCount = count
+          popularPropertyId = propertyId
+        }
+      })
+
+      const popularProperty = properties.find((p) => p.id === popularPropertyId)
+      return {
+        name: popularProperty?.title || "N/A",
+        count: maxCount,
+      }
+    })(),
+
+    // Calculate conversion rate (confirmed bookings / total bookings)
+    conversionRate: bookings?.length
+      ? Math.round((bookings.filter((b) => b.status === "confirmed").length / bookings.length) * 100)
+      : 0,
+  }
 
   useEffect(() => {
     // Check if user is authenticated and admin
@@ -177,7 +287,8 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* Stats Cards */}
+      {/* Stats Cards - First Row */}
+      <h2 className="text-xl font-semibold text-gouna-blue-dark mb-4">Booking Overview</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <Card>
           <CardContent className="p-6">
@@ -236,7 +347,180 @@ export default function AdminDashboard() {
         </Card>
       </div>
 
+      {/* Revenue Metrics */}
+      <h2 className="text-xl font-semibold text-gouna-blue-dark mb-4">Revenue Metrics</h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-500">Total Revenue</p>
+                <h3 className="text-3xl font-bold text-green-600 mt-1">
+                  ${revenueMetrics.totalRevenue.toLocaleString()}
+                </h3>
+              </div>
+              <div className="p-3 bg-green-100 rounded-full">
+                <DollarSign className="h-6 w-6 text-green-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-500">Confirmed Revenue</p>
+                <h3 className="text-3xl font-bold text-green-600 mt-1">
+                  ${revenueMetrics.confirmedRevenue.toLocaleString()}
+                </h3>
+              </div>
+              <div className="p-3 bg-green-100 rounded-full">
+                <CheckCircle className="h-6 w-6 text-green-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-500">Pending Revenue</p>
+                <h3 className="text-3xl font-bold text-amber-500 mt-1">
+                  ${revenueMetrics.pendingRevenue.toLocaleString()}
+                </h3>
+              </div>
+              <div className="p-3 bg-amber-100 rounded-full">
+                <Clock className="h-6 w-6 text-amber-500" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-500">Avg. Booking Value</p>
+                <h3 className="text-3xl font-bold text-gouna-blue-dark mt-1">${revenueMetrics.averageBookingValue}</h3>
+              </div>
+              <div className="p-3 bg-gouna-blue/10 rounded-full">
+                <BarChart3 className="h-6 w-6 text-gouna-blue" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Occupancy Metrics */}
+      <h2 className="text-xl font-semibold text-gouna-blue-dark mb-4">Occupancy & Performance</h2>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-500">Occupancy Rate</p>
+                <h3 className="text-3xl font-bold text-purple-600 mt-1">{performanceMetrics.occupancyRate}%</h3>
+              </div>
+              <div className="p-3 bg-purple-100 rounded-full">
+                <Percent className="h-6 w-6 text-purple-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-500">Avg. Stay Duration</p>
+                <h3 className="text-3xl font-bold text-indigo-600 mt-1">
+                  {occupancyMetrics.averageStayDuration} nights
+                </h3>
+              </div>
+              <div className="p-3 bg-indigo-100 rounded-full">
+                <Calendar className="h-6 w-6 text-indigo-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-500">Conversion Rate</p>
+                <h3 className="text-3xl font-bold text-teal-600 mt-1">{performanceMetrics.conversionRate}%</h3>
+              </div>
+              <div className="p-3 bg-teal-100 rounded-full">
+                <TrendingUp className="h-6 w-6 text-teal-600" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-500">Upcoming Check-ins</p>
+                <h3 className="text-3xl font-bold text-orange-500 mt-1">{occupancyMetrics.upcomingCheckIns}</h3>
+              </div>
+              <div className="p-3 bg-orange-100 rounded-full">
+                <Users className="h-6 w-6 text-orange-500" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Most Popular Property */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-gouna-blue-dark">Most Popular Property</CardTitle>
+            <CardDescription>Property with the most bookings</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-xl font-bold text-gouna-blue-dark">
+                  {performanceMetrics.mostPopularProperty.name}
+                </h3>
+                <p className="text-gray-600">{performanceMetrics.mostPopularProperty.count} bookings</p>
+              </div>
+              <div className="p-3 bg-gouna-blue/10 rounded-full">
+                <TrendingUp className="h-6 w-6 text-gouna-blue" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-gouna-blue-dark">Booking Activity</CardTitle>
+            <CardDescription>Upcoming check-ins and check-outs</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <p className="text-sm font-medium text-blue-600">Upcoming Check-ins</p>
+                <p className="text-2xl font-bold text-blue-700">{occupancyMetrics.upcomingCheckIns}</p>
+                <p className="text-xs text-blue-500">Next 7 days</p>
+              </div>
+              <div className="bg-amber-50 p-4 rounded-lg">
+                <p className="text-sm font-medium text-amber-600">Upcoming Check-outs</p>
+                <p className="text-2xl font-bold text-amber-700">{occupancyMetrics.upcomingCheckOuts}</p>
+                <p className="text-xs text-amber-500">Next 7 days</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Admin Actions */}
+      <h2 className="text-xl font-semibold text-gouna-blue-dark mb-4">Quick Actions</h2>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <Card>
           <CardHeader>

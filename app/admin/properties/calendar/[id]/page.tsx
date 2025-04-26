@@ -81,39 +81,21 @@ export default function PropertyCalendarPage({ params }: { params: { id: string 
   }
 
   return (
-    <div className="container py-12">
-      <Button variant="ghost" className="mb-6" onClick={() => router.push("/admin/properties")}>
+    <div className="container py-8">
+      <Button variant="ghost" className="mb-4" onClick={() => router.push("/admin/properties")}>
         <ArrowLeft className="mr-2 h-4 w-4" /> Back to Properties
       </Button>
 
       <Card className="mb-8">
-        <CardHeader>
+        <CardHeader className="pb-2">
           <CardTitle className="text-2xl font-bold text-gouna-blue-dark">Calendar for {property.title}</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="text-sm text-gray-500 mb-6">
+          <div className="text-sm text-gray-500 mb-4">
             <p>
-              Use this calendar to view bookings and block dates for this property. You can block dates when the
-              property is unavailable (e.g., for maintenance or owner stays).
+              Use this calendar to view bookings and block dates for this property. You can block individual dates or
+              date ranges when the property is unavailable (e.g., for maintenance or owner stays).
             </p>
-            <ul className="mt-2 list-disc list-inside space-y-1">
-              <li>
-                <span className="inline-block w-3 h-3 rounded-full bg-green-500 mr-2"></span>
-                <span className="font-medium">Green</span>: Confirmed bookings
-              </li>
-              <li>
-                <span className="inline-block w-3 h-3 rounded-full bg-blue-500 mr-2"></span>
-                <span className="font-medium">Blue</span>: Pending bookings (awaiting confirmation)
-              </li>
-              <li>
-                <span className="inline-block w-3 h-3 rounded-full bg-yellow-500 mr-2"></span>
-                <span className="font-medium">Yellow</span>: Awaiting payment
-              </li>
-              <li>
-                <span className="inline-block w-3 h-3 rounded-full bg-gray-500 mr-2"></span>
-                <span className="font-medium">Gray</span>: Manually blocked dates
-              </li>
-            </ul>
           </div>
 
           <PropertyCalendar propertyId={property.id} />

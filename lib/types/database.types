@@ -83,7 +83,7 @@ export interface Database {
             isOneToOne: false
             referencedRelation: "properties"
             referencedColumns: ["id"]
-          },
+          }
         ]
       }
       blocked_dates: {
@@ -115,7 +115,7 @@ export interface Database {
             isOneToOne: false
             referencedRelation: "properties"
             referencedColumns: ["id"]
-          },
+          }
         ]
       }
       properties: {
@@ -189,8 +189,35 @@ export interface Database {
             isOneToOne: false
             referencedRelation: "properties"
             referencedColumns: ["id"]
-          },
+          }
         ]
+      }
+      system_logs: {
+        Row: {
+          id: string
+          timestamp: string
+          level: string
+          category: string
+          message: string
+          details: Json | null
+        }
+        Insert: {
+          id?: string
+          timestamp?: string
+          level: string
+          category: string
+          message: string
+          details?: Json | null
+        }
+        Update: {
+          id?: string
+          timestamp?: string
+          level?: string
+          category?: string
+          message?: string
+          details?: Json | null
+        }
+        Relationships: []
       }
     }
     Views: {

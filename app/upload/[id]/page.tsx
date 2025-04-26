@@ -11,7 +11,8 @@ import { FileUpload } from "@/components/file-upload"
 import { uploadPaymentProof, uploadTenantDocument } from "@/lib/blob"
 import { updatePaymentProof, addTenantIdDocument, getBookingById } from "@/app/api/bookings/actions"
 import { getPropertyById } from "@/app/api/properties/actions"
-import { Check, AlertCircle, Loader2 } from "lucide-react"
+import { Check, AlertCircle, Loader2, Info, X } from "lucide-react"
+import { logError, logInfo } from "@/lib/logging"
 
 export default function UploadDocumentsPage() {
   const params = useParams()
@@ -27,33 +28,39 @@ export default function UploadDocumentsPage() {
   const [tenantIds, setTenantIds] = useState<File[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSubmitted, setIsSubmitted] = useState(false)
+  const [uploadErrors, setUploadErrors] = useState<{ [key: string]: string }>({})
 
   useEffect(() => {
     async function loadBookingAndProperty() {
       try {
+        logInfo("Upload page", `Loading booking data for ID: ${bookingId}`)
         const { booking, error: bookingError } = await getBookingById(bookingId)
 
         if (bookingError || !booking) {
-          throw new Error("Booking not found")
+          throw new Error(bookingError || "Booking not found")
         }
 
         setBooking(booking)
+        logInfo("Upload page", `Booking loaded: ${booking.id}`)
 
         // If payment proof already exists, mark as submitted
         if (booking.payment_proof_url) {
           setIsSubmitted(true)
+          logInfo("Upload page", `Booking already has payment proof: ${booking.payment_proof_url}`)
         }
 
         const { property, error: propertyError } = await getPropertyById(booking.property_id)
 
         if (propertyError || !property) {
-          throw new Error("Property not found")
+          throw new Error(propertyError || "Property not found")
         }
 
         setProperty(property)
+        logInfo("Upload page", `Property loaded: ${property.title}`)
       } catch (err: any) {
-        setError(err.message || "An error occurred")
-        console.error("Error loading booking:", err)
+        const errorMessage = err.message || "An error occurred"
+        setError(errorMessage)
+        logError("Upload page", `Error loading booking: ${errorMessage}`)
       } finally {
         setIsLoading(false)
       }
@@ -66,63 +73,85 @@ export default function UploadDocumentsPage() {
 
   const handlePaymentProofSelect = (file: File) => {
     setPaymentProof(file)
+    setUploadErrors({ ...uploadErrors, paymentProof: "" }) // Clear any previous errors
+    logInfo("Upload page", `Payment proof selected: ${file.name}, ${file.size} bytes`)
   }
 
   const handleTenantIdSelect = (file: File) => {
     setTenantIds((prev) => [...prev, file])
+    setUploadErrors({ ...uploadErrors, tenantIds: "" }) // Clear any previous errors
+    logInfo("Upload page", `Tenant ID selected: ${file.name}, ${file.size} bytes`)
   }
 
   const handleRemoveTenantId = (index: number) => {
+    logInfo("Upload page", `Removing tenant ID at index ${index}`)
     setTenantIds((prev) => prev.filter((_, i) => i !== index))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+    setUploadErrors({})
 
     if (!paymentProof) {
-      setError("Please upload payment proof")
+      setUploadErrors({ ...uploadErrors, paymentProof: "Please upload payment proof" })
       return
     }
 
     if (tenantIds.length === 0) {
-      setError("Please upload at least one tenant ID")
+      setUploadErrors({ ...uploadErrors, tenantIds: "Please upload at least one tenant ID" })
       return
     }
 
     setIsSubmitting(true)
+    logInfo("Upload page", "Starting document submission process")
 
     try {
       // Upload payment proof
+      logInfo("Upload page", `Uploading payment proof: ${paymentProof.name}`)
       const paymentProofResult = await uploadPaymentProof(paymentProof)
 
       if (!paymentProofResult.success || !paymentProofResult.url) {
-        throw new Error("Failed to upload payment proof")
+        throw new Error(paymentProofResult.error || "Failed to upload payment proof")
       }
+
+      logInfo("Upload page", `Payment proof uploaded successfully: ${paymentProofResult.url}`)
 
       // Update booking with payment proof
       const updateResult = await updatePaymentProof(bookingId, paymentProofResult.url)
 
       if (!updateResult.success) {
-        throw new Error("Failed to update booking with payment proof")
+        throw new Error(updateResult.error || "Failed to update booking with payment proof")
       }
 
+      logInfo("Upload page", "Booking updated with payment proof")
+
       // Upload tenant IDs
+      let uploadedIds = 0
       for (const tenantId of tenantIds) {
+        logInfo("Upload page", `Uploading tenant ID: ${tenantId.name}`)
         const tenantIdResult = await uploadTenantDocument(tenantId)
 
         if (!tenantIdResult.success || !tenantIdResult.url) {
-          throw new Error("Failed to upload tenant ID")
+          throw new Error(`Failed to upload tenant ID: ${tenantId.name}`)
         }
 
         // Add tenant ID to booking
-        await addTenantIdDocument(bookingId, tenantIdResult.url)
+        const addResult = await addTenantIdDocument(bookingId, tenantIdResult.url)
+        if (!addResult.success) {
+          throw new Error(`Failed to add tenant ID document to booking: ${addResult.error}`)
+        }
+
+        uploadedIds++
+        logInfo("Upload page", `Tenant ID ${uploadedIds} uploaded successfully: ${tenantIdResult.url}`)
       }
 
+      logInfo("Upload page", `All documents uploaded successfully for booking ${bookingId}`)
       setIsSubmitted(true)
     } catch (err: any) {
-      setError(err.message || "An error occurred")
-      console.error("Error submitting documents:", err)
+      const errorMessage = err.message || "An error occurred during document upload"
+      setError(errorMessage)
+      logError("Upload page", `Error submitting documents: ${errorMessage}`)
     } finally {
       setIsSubmitting(false)
     }
@@ -144,6 +173,7 @@ export default function UploadDocumentsPage() {
             <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
             <h2 className="text-xl font-semibold text-gouna-blue-dark mb-2">Booking Not Found</h2>
             <p className="text-gray-600">The booking you're looking for doesn't exist or has expired.</p>
+            {error && <p className="mt-4 text-sm text-red-500">{error}</p>}
           </CardContent>
         </Card>
       </div>
@@ -173,6 +203,9 @@ export default function UploadDocumentsPage() {
             <p className="text-sm text-gray-500">
               If you have any questions, please contact us at support@elgounarentals.com
             </p>
+            <Button onClick={() => router.push("/")} className="mt-6 bg-gouna-blue hover:bg-gouna-blue-dark text-white">
+              Return to Home
+            </Button>
           </CardContent>
         </Card>
       </div>
@@ -236,7 +269,15 @@ export default function UploadDocumentsPage() {
           <CardDescription>Please upload your payment proof and ID documents for all adult guests.</CardDescription>
         </CardHeader>
         <CardContent>
-          {error && <div className="bg-red-50 text-red-700 p-4 rounded-md mb-6">{error}</div>}
+          {error && (
+            <div className="bg-red-50 text-red-700 p-4 rounded-md mb-6 flex items-start">
+              <AlertCircle className="h-5 w-5 mr-2 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="font-medium">Error uploading documents</p>
+                <p className="text-sm">{error}</p>
+              </div>
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
@@ -253,6 +294,9 @@ export default function UploadDocumentsPage() {
                 accept="image/*,.pdf"
                 label="Upload payment proof"
                 variant="image"
+                error={uploadErrors.paymentProof}
+                disabled={isSubmitting}
+                maxSizeMB={10}
               />
             </div>
 
@@ -276,8 +320,9 @@ export default function UploadDocumentsPage() {
                           size="sm"
                           onClick={() => handleRemoveTenantId(index)}
                           className="h-8 w-8 p-0 text-gray-500 hover:text-red-500"
+                          disabled={isSubmitting}
                         >
-                          <AlertCircle className="h-5 w-5" />
+                          <X className="h-5 w-5" />
                         </Button>
                       </div>
                       <div className="text-sm text-gray-600">{file.name}</div>
@@ -293,6 +338,9 @@ export default function UploadDocumentsPage() {
                 accept="image/*,.pdf"
                 label="Upload ID document"
                 variant="image"
+                error={uploadErrors.tenantIds}
+                disabled={isSubmitting}
+                maxSizeMB={10}
               />
             </div>
 
@@ -316,6 +364,21 @@ export default function UploadDocumentsPage() {
               </p>
             </div>
           </form>
+        </CardContent>
+      </Card>
+
+      {/* Debug information card */}
+      <Card className="mt-8 border-dashed border-gray-300">
+        <CardHeader>
+          <CardTitle className="text-sm text-gray-500 flex items-center">
+            <Info className="h-4 w-4 mr-2" /> Debug Information
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="text-xs text-gray-500">
+          <p>Booking ID: {bookingId}</p>
+          <p>Property ID: {booking?.property_id}</p>
+          <p>Status: {booking?.status}</p>
+          <p>Browser: {typeof window !== "undefined" ? window.navigator.userAgent : "Unknown"}</p>
         </CardContent>
       </Card>
     </div>

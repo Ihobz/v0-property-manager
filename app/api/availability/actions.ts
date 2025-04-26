@@ -72,7 +72,7 @@ export async function getPropertyBookedDates(propertyId: string) {
     // Get all bookings for this property
     const { data: bookings, error } = await supabase
       .from("bookings")
-      .select("check_in, check_out")
+      .select("check_in, check_out, status")
       .eq("property_id", propertyId)
       .not("status", "eq", "cancelled") // Exclude cancelled bookings
 
@@ -83,6 +83,9 @@ export async function getPropertyBookedDates(propertyId: string) {
 
     // Generate all booked dates
     const bookedDates: string[] = []
+    const confirmedDates: string[] = []
+    const pendingDates: string[] = []
+    const awaitingPaymentDates: string[] = []
 
     bookings.forEach((booking) => {
       const checkIn = parseISO(booking.check_in)
@@ -91,7 +94,18 @@ export async function getPropertyBookedDates(propertyId: string) {
       // Add all dates between check-in and check-out (inclusive)
       let currentDate = checkIn
       while (currentDate <= checkOut) {
-        bookedDates.push(format(currentDate, "yyyy-MM-dd"))
+        const formattedDate = format(currentDate, "yyyy-MM-dd")
+        bookedDates.push(formattedDate)
+
+        // Also track dates by status
+        if (booking.status === "confirmed") {
+          confirmedDates.push(formattedDate)
+        } else if (booking.status === "awaiting_confirmation") {
+          pendingDates.push(formattedDate)
+        } else if (booking.status === "awaiting_payment") {
+          awaitingPaymentDates.push(formattedDate)
+        }
+
         currentDate = addDays(currentDate, 1)
       }
     })
@@ -104,20 +118,40 @@ export async function getPropertyBookedDates(propertyId: string) {
 
     if (blockedError) {
       console.error("Error fetching blocked dates:", blockedError)
-      return { bookedDates, error: blockedError.message }
+      return {
+        bookedDates,
+        confirmedDates,
+        pendingDates,
+        awaitingPaymentDates,
+        blockedDates: [],
+        error: blockedError.message,
+      }
     }
+
+    // Extract blocked dates
+    const blockedDatesList = blockedDates ? blockedDates.map((item) => item.date) : []
 
     // Add blocked dates to the booked dates array
-    if (blockedDates) {
-      blockedDates.forEach((blockedDate) => {
-        bookedDates.push(blockedDate.date)
-      })
-    }
+    bookedDates.push(...blockedDatesList)
 
-    return { bookedDates, error: null }
+    return {
+      bookedDates,
+      confirmedDates,
+      pendingDates,
+      awaitingPaymentDates,
+      blockedDates: blockedDatesList,
+      error: null,
+    }
   } catch (error) {
     console.error("Error in getPropertyBookedDates:", error)
-    return { bookedDates: [], error: "Failed to fetch booked dates" }
+    return {
+      bookedDates: [],
+      confirmedDates: [],
+      pendingDates: [],
+      awaitingPaymentDates: [],
+      blockedDates: [],
+      error: "Failed to fetch booked dates",
+    }
   }
 }
 
@@ -141,7 +175,7 @@ export async function getPropertyBookings(propertyId: string) {
     // Get all blocked dates for this property
     const { data: blockedDates, error: blockedError } = await supabase
       .from("blocked_dates")
-      .select("date, reason")
+      .select("id, date, reason")
       .eq("property_id", propertyId)
       .order("date", { ascending: true })
 
@@ -198,7 +232,7 @@ export async function blockPropertyDates(propertyId: string, startDate: string, 
     }
 
     // Revalidate paths
-    revalidatePath(`/admin/properties/${propertyId}`)
+    revalidatePath(`/admin/properties/calendar/${propertyId}`)
     revalidatePath(`/properties/${propertyId}`)
 
     return { success: true }
@@ -222,7 +256,7 @@ export async function unblockPropertyDates(propertyId: string, date: string) {
     }
 
     // Revalidate paths
-    revalidatePath(`/admin/properties/${propertyId}`)
+    revalidatePath(`/admin/properties/calendar/${propertyId}`)
     revalidatePath(`/properties/${propertyId}`)
 
     return { success: true }
@@ -232,7 +266,7 @@ export async function unblockPropertyDates(propertyId: string, date: string) {
   }
 }
 
-// New functions for blocking individual dates
+// Block individual date
 export async function blockDate(propertyId: string, date: string, reason?: string) {
   try {
     const supabase = createServerSupabaseClient()
@@ -284,6 +318,7 @@ export async function blockDate(propertyId: string, date: string, reason?: strin
   }
 }
 
+// Unblock individual date
 export async function unblockDate(propertyId: string, date: string) {
   try {
     const supabase = createServerSupabaseClient()
@@ -302,6 +337,120 @@ export async function unblockDate(propertyId: string, date: string) {
   } catch (error) {
     console.error("Error unblocking date:", error)
     return { success: false, error: "Failed to unblock date" }
+  }
+}
+
+// Block multiple dates
+export async function blockMultipleDates(propertyId: string, dates: string[], reason?: string) {
+  try {
+    const supabase = createServerSupabaseClient()
+
+    // Check if any dates are already blocked or booked
+    const existingBlocks = await Promise.all(
+      dates.map(async (date) => {
+        // Check if already blocked
+        const { data: existingBlock } = await supabase
+          .from("blocked_dates")
+          .select("id")
+          .eq("property_id", propertyId)
+          .eq("date", date)
+          .single()
+
+        if (existingBlock) return { date, blocked: true, booked: false }
+
+        // Check if booked
+        const { data: bookings } = await supabase
+          .from("bookings")
+          .select("id")
+          .eq("property_id", propertyId)
+          .lte("check_in", date)
+          .gte("check_out", date)
+          .not("status", "eq", "cancelled")
+
+        if (bookings && bookings.length > 0) return { date, blocked: false, booked: true }
+
+        return { date, blocked: false, booked: false }
+      }),
+    )
+
+    // Filter out dates that are already blocked or booked
+    const datesToBlock = existingBlocks
+      .filter((item) => !item.blocked && !item.booked)
+      .map((item) => ({
+        property_id: propertyId,
+        date: item.date,
+        reason: reason || "Manually blocked",
+      }))
+
+    if (datesToBlock.length === 0) {
+      return {
+        success: false,
+        error: "All selected dates are already blocked or booked",
+        blockedCount: 0,
+        totalCount: dates.length,
+      }
+    }
+
+    // Block the dates
+    const { error } = await supabase.from("blocked_dates").insert(datesToBlock)
+
+    if (error) {
+      throw new Error(error.message)
+    }
+
+    // Revalidate paths
+    revalidatePath(`/admin/properties/calendar/${propertyId}`)
+    revalidatePath(`/properties/${propertyId}`)
+
+    return {
+      success: true,
+      blockedCount: datesToBlock.length,
+      totalCount: dates.length,
+    }
+  } catch (error) {
+    console.error("Error blocking multiple dates:", error)
+    return {
+      success: false,
+      error: "Failed to block dates",
+      blockedCount: 0,
+      totalCount: dates.length,
+    }
+  }
+}
+
+// Unblock date range
+export async function unblockDateRange(propertyId: string, startDate: string, endDate: string) {
+  try {
+    const supabase = createServerSupabaseClient()
+
+    // Delete all blocked dates in the range
+    const { data, error } = await supabase
+      .from("blocked_dates")
+      .delete()
+      .eq("property_id", propertyId)
+      .gte("date", startDate)
+      .lte("date", endDate)
+      .select("id")
+
+    if (error) {
+      throw new Error(error.message)
+    }
+
+    // Revalidate paths
+    revalidatePath(`/admin/properties/calendar/${propertyId}`)
+    revalidatePath(`/properties/${propertyId}`)
+
+    return {
+      success: true,
+      unblockedCount: data?.length || 0,
+    }
+  } catch (error) {
+    console.error("Error unblocking date range:", error)
+    return {
+      success: false,
+      error: "Failed to unblock dates",
+      unblockedCount: 0,
+    }
   }
 }
 

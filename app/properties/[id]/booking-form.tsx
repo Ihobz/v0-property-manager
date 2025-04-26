@@ -2,266 +2,370 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import { format, differenceInDays } from "date-fns"
+import { CalendarIcon, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Calendar } from "@/components/ui/calendar"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Textarea } from "@/components/ui/textarea"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Calendar } from "lucide-react"
+import { toast } from "@/components/ui/use-toast"
+import { cn } from "@/lib/utils"
 import { createBooking } from "@/app/api/bookings/actions"
-import { checkPropertyAvailability } from "@/app/api/availability/actions"
-import { usePropertyAvailability } from "@/hooks/use-availability"
-import { format, addDays, differenceInDays, isAfter, isBefore, parseISO } from "date-fns"
+import { getPropertyBookedDates } from "@/app/api/availability/actions"
 
-type BookingFormProps = {
-  property: any
+interface BookingFormProps {
+  propertyId: string
+  pricePerNight: number
+  cleaningFee: number
 }
 
-export default function BookingForm({ property }: BookingFormProps) {
+export default function BookingForm({ propertyId, pricePerNight, cleaningFee }: BookingFormProps) {
   const router = useRouter()
-  const { bookedDates } = usePropertyAvailability(property.id)
-  const [today] = useState(format(new Date(), "yyyy-MM-dd"))
-
-  const [checkIn, setCheckIn] = useState("")
-  const [checkOut, setCheckOut] = useState("")
-  const [guests, setGuests] = useState("2")
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [phone, setPhone] = useState("")
-  const [message, setMessage] = useState("")
-
+  const [notes, setNotes] = useState("")
+  const [checkIn, setCheckIn] = useState<Date | undefined>(undefined)
+  const [checkOut, setCheckOut] = useState<Date | undefined>(undefined)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [bookedDates, setBookedDates] = useState<string[]>([])
+  const [confirmedDates, setConfirmedDates] = useState<string[]>([])
+  const [pendingDates, setPendingDates] = useState<string[]>([])
+  const [awaitingPaymentDates, setAwaitingPaymentDates] = useState<string[]>([])
+  const [blockedDates, setBlockedDates] = useState<string[]>([])
+  const [isLoadingDates, setIsLoadingDates] = useState(true)
 
   // Calculate total price
-  const calculateTotalPrice = () => {
-    if (!checkIn || !checkOut) return 0
+  const nights = checkIn && checkOut ? differenceInDays(checkOut, checkIn) : 0
+  const subtotal = nights * pricePerNight
+  const total = subtotal + cleaningFee
 
-    const startDate = new Date(checkIn)
-    const endDate = new Date(checkOut)
-    const nights = differenceInDays(endDate, startDate)
+  useEffect(() => {
+    async function fetchBookedDates() {
+      setIsLoadingDates(true)
+      try {
+        const { bookedDates, confirmedDates, pendingDates, awaitingPaymentDates, blockedDates, error } =
+          await getPropertyBookedDates(propertyId)
 
-    return nights * property.price
-  }
+        if (error) {
+          console.error("Error fetching booked dates:", error)
+          toast({
+            variant: "destructive",
+            title: "Error",
+            description: "Failed to load availability data. Please try again.",
+          })
+          return
+        }
 
-  const totalPrice = calculateTotalPrice()
-
-  // Check if selected dates are valid
-  const isDateRangeValid = () => {
-    if (!checkIn || !checkOut) return false
-
-    const startDate = new Date(checkIn)
-    const endDate = new Date(checkOut)
-
-    // Check if checkout is after checkin
-    if (!isAfter(endDate, startDate)) return false
-
-    // Check if dates are not in the past
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    if (isBefore(startDate, today)) return false
-
-    // Check if dates are not booked
-    for (const bookedDate of bookedDates) {
-      const booked = parseISO(bookedDate)
-      if (
-        (isAfter(booked, startDate) || booked.getTime() === startDate.getTime()) &&
-        (isBefore(booked, endDate) || booked.getTime() === endDate.getTime())
-      ) {
-        return false
+        setBookedDates(bookedDates || [])
+        setConfirmedDates(confirmedDates || [])
+        setPendingDates(pendingDates || [])
+        setAwaitingPaymentDates(awaitingPaymentDates || [])
+        setBlockedDates(blockedDates || [])
+      } catch (error) {
+        console.error("Error in fetchBookedDates:", error)
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to load availability data. Please try again.",
+        })
+      } finally {
+        setIsLoadingDates(false)
       }
     }
 
-    return true
-  }
+    fetchBookedDates()
+  }, [propertyId])
 
-  const handleBookingSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError(null)
+
+    if (!checkIn || !checkOut) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Please select check-in and check-out dates.",
+      })
+      return
+    }
+
+    if (nights <= 0) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Check-out date must be after check-in date.",
+      })
+      return
+    }
+
     setIsSubmitting(true)
 
     try {
-      // Validate inputs
-      if (!checkIn || !checkOut || !guests || !name || !email || !phone) {
-        throw new Error("Please fill in all required fields")
-      }
+      const formattedCheckIn = format(checkIn, "yyyy-MM-dd")
+      const formattedCheckOut = format(checkOut, "yyyy-MM-dd")
 
-      if (!isDateRangeValid()) {
-        throw new Error("The selected dates are not available")
-      }
-
-      // Check availability
-      const { available } = await checkPropertyAvailability(property.id, checkIn, checkOut)
-
-      if (!available) {
-        throw new Error("Sorry, these dates are no longer available")
-      }
-
-      // Create booking
       const result = await createBooking({
-        property_id: property.id,
+        propertyId,
         name,
         email,
         phone,
-        check_in: checkIn,
-        check_out: checkOut,
-        guests: Number.parseInt(guests),
-        base_price: totalPrice,
-        total_price: totalPrice, // Cleaning fee will be added by admin
+        checkIn: formattedCheckIn,
+        checkOut: formattedCheckOut,
+        notes,
+        totalPrice: total,
       })
 
-      if (!result.success) {
-        throw new Error("Failed to create booking")
+      if (result.error) {
+        throw new Error(result.error)
       }
 
-      // Redirect to upload page
-      router.push(`/upload/${result.booking.id}`)
-    } catch (err: any) {
-      setError(err.message || "An error occurred")
-      console.error("Error creating booking:", err)
+      toast({
+        title: "Booking Request Submitted",
+        description: "Your booking request has been submitted successfully.",
+      })
+
+      // Redirect to the payment proof upload page
+      router.push(`/upload/${result.bookingId}`)
+    } catch (error) {
+      console.error("Error creating booking:", error)
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to create booking. Please try again.",
+      })
+    } finally {
       setIsSubmitting(false)
     }
   }
 
-  // Handle date input change with validation
-  const handleCheckInChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedDate = e.target.value
-
-    // Validate that the selected date is not in the past
-    if (selectedDate < today) {
-      setError("You cannot select a date in the past")
-      return
-    }
-
-    setCheckIn(selectedDate)
-    setError(null)
-
-    // Clear checkout if it's before new checkin
-    if (checkOut && checkOut <= selectedDate) {
-      setCheckOut("")
-    }
+  // Function to check if a date is disabled (already booked)
+  const isDateDisabled = (date: Date) => {
+    const formattedDate = format(date, "yyyy-MM-dd")
+    return bookedDates.includes(formattedDate)
   }
 
-  const handleCheckOutChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedDate = e.target.value
+  // Function to get day style based on booking status
+  const getDayStyle = (date: Date) => {
+    const formattedDate = format(date, "yyyy-MM-dd")
 
-    // Validate that the selected date is after check-in
-    if (checkIn && selectedDate <= checkIn) {
-      setError("Check-out date must be after check-in date")
-      return
+    if (blockedDates.includes(formattedDate)) {
+      return "bg-gray-200 text-gray-500 cursor-not-allowed"
     }
 
-    setCheckOut(selectedDate)
-    setError(null)
+    if (confirmedDates.includes(formattedDate)) {
+      return "bg-green-100 text-green-800 cursor-not-allowed"
+    }
+
+    if (pendingDates.includes(formattedDate)) {
+      return "bg-blue-100 text-blue-800 cursor-not-allowed"
+    }
+
+    if (awaitingPaymentDates.includes(formattedDate)) {
+      return "bg-yellow-100 text-yellow-800 cursor-not-allowed"
+    }
+
+    return ""
   }
 
   return (
-    <div>
-      <form onSubmit={handleBookingSubmit} className="space-y-4">
-        {error && <div className="bg-red-50 text-red-700 p-3 rounded-md mb-4">{error}</div>}
-
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <Label htmlFor="check-in">Check In</Label>
-            <div className="relative">
+    <Card className="w-full">
+      <CardHeader>
+        <CardTitle className="text-xl font-bold">Book This Property</CardTitle>
+        <CardDescription>Fill out the form below to request a booking.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Full Name</Label>
               <Input
-                type="date"
-                id="check-in"
-                className="pr-10"
-                value={checkIn}
-                onChange={handleCheckInChange}
-                min={today}
+                id="name"
+                placeholder="Enter your full name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
                 required
               />
-              <Calendar className="h-4 w-4 absolute top-3 right-3 text-gray-500" />
             </div>
-          </div>
-          <div>
-            <Label htmlFor="check-out">Check Out</Label>
-            <div className="relative">
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
               <Input
-                type="date"
-                id="check-out"
-                className="pr-10"
-                value={checkOut}
-                onChange={handleCheckOutChange}
-                min={checkIn ? format(addDays(new Date(checkIn), 1), "yyyy-MM-dd") : today}
-                disabled={!checkIn}
+                id="email"
+                type="email"
+                placeholder="Enter your email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 required
               />
-              <Calendar className="h-4 w-4 absolute top-3 right-3 text-gray-500" />
             </div>
           </div>
-        </div>
 
-        <div>
-          <Label htmlFor="guests">Guests</Label>
-          <Select value={guests} onValueChange={setGuests}>
-            <SelectTrigger id="guests">
-              <SelectValue placeholder="Select" />
-            </SelectTrigger>
-            <SelectContent>
-              {[...Array(property.guests)].map((_, i) => (
-                <SelectItem key={i} value={(i + 1).toString()}>
-                  {i + 1} {i === 0 ? "Guest" : "Guests"}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+          <div className="space-y-2">
+            <Label htmlFor="phone">Phone Number</Label>
+            <Input
+              id="phone"
+              placeholder="Enter your phone number"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              required
+            />
+          </div>
 
-        {checkIn && checkOut && isDateRangeValid() && (
-          <div className="bg-gray-50 p-4 rounded-md space-y-2">
-            <div className="flex justify-between">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="check-in">Check-in Date</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    id="check-in"
+                    variant="outline"
+                    className={cn("w-full justify-start text-left font-normal", !checkIn && "text-muted-foreground")}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {checkIn ? format(checkIn, "PPP") : <span>Select date</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  {isLoadingDates ? (
+                    <div className="flex items-center justify-center p-4">
+                      <Loader2 className="h-6 w-6 animate-spin text-gouna-blue" />
+                    </div>
+                  ) : (
+                    <Calendar
+                      mode="single"
+                      selected={checkIn}
+                      onSelect={setCheckIn}
+                      disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0)) || isDateDisabled(date)}
+                      initialFocus
+                      styles={{
+                        day: (date) => {
+                          return {
+                            className: getDayStyle(date),
+                          }
+                        },
+                      }}
+                    />
+                  )}
+                </PopoverContent>
+              </Popover>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="check-out">Check-out Date</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    id="check-out"
+                    variant="outline"
+                    className={cn("w-full justify-start text-left font-normal", !checkOut && "text-muted-foreground")}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {checkOut ? format(checkOut, "PPP") : <span>Select date</span>}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  {isLoadingDates ? (
+                    <div className="flex items-center justify-center p-4">
+                      <Loader2 className="h-6 w-6 animate-spin text-gouna-blue" />
+                    </div>
+                  ) : (
+                    <Calendar
+                      mode="single"
+                      selected={checkOut}
+                      onSelect={setCheckOut}
+                      disabled={(date) =>
+                        (checkIn ? date <= checkIn : date < new Date(new Date().setHours(0, 0, 0, 0))) ||
+                        isDateDisabled(date)
+                      }
+                      initialFocus
+                      styles={{
+                        day: (date) => {
+                          return {
+                            className: getDayStyle(date),
+                          }
+                        },
+                      }}
+                    />
+                  )}
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="notes">Special Requests (Optional)</Label>
+            <Textarea
+              id="notes"
+              placeholder="Any special requests or notes for your stay"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className="min-h-[100px]"
+            />
+          </div>
+
+          <div className="space-y-2 bg-gray-50 p-4 rounded-md">
+            <div className="flex justify-between text-sm">
               <span>Price per night</span>
-              <span>${property.price}</span>
+              <span>${pricePerNight.toFixed(2)}</span>
             </div>
-            <div className="flex justify-between">
-              <span>Nights</span>
-              <span>{differenceInDays(new Date(checkOut), new Date(checkIn))}</span>
+            <div className="flex justify-between text-sm">
+              <span>Number of nights</span>
+              <span>{nights}</span>
             </div>
-            <div className="flex justify-between font-semibold">
+            <div className="flex justify-between text-sm">
+              <span>Subtotal</span>
+              <span>${subtotal.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span>Cleaning fee</span>
+              <span>${cleaningFee.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between font-bold pt-2 border-t">
               <span>Total</span>
-              <span>${totalPrice}</span>
+              <span>${total.toFixed(2)}</span>
             </div>
-            <p className="text-xs text-gray-500 mt-2">* Cleaning fee may be added by the property owner</p>
           </div>
-        )}
 
-        <div>
-          <Label htmlFor="name">Full Name</Label>
-          <Input type="text" id="name" value={name} onChange={(e) => setName(e.target.value)} required />
-        </div>
+          <div className="bg-blue-50 p-4 rounded-md text-sm text-blue-700">
+            <p className="font-medium mb-1">Booking Information:</p>
+            <ul className="list-disc list-inside space-y-1">
+              <li>Your booking will be confirmed after payment verification.</li>
+              <li>After submitting, you'll be directed to upload payment proof.</li>
+              <li>You can check your booking status anytime using your email.</li>
+            </ul>
+          </div>
 
-        <div>
-          <Label htmlFor="email">Email</Label>
-          <Input type="email" id="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-        </div>
-
-        <div>
-          <Label htmlFor="phone">Phone</Label>
-          <Input type="tel" id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} required />
-        </div>
-
-        <div>
-          <Label htmlFor="message">Message (Optional)</Label>
-          <Textarea id="message" value={message} onChange={(e) => setMessage(e.target.value)} />
-        </div>
-
+          <div className="flex items-center gap-2 mt-2">
+            <div className="w-3 h-3 rounded-full bg-green-100"></div>
+            <span className="text-xs">Confirmed bookings</span>
+            <div className="w-3 h-3 rounded-full bg-blue-100 ml-2"></div>
+            <span className="text-xs">Pending confirmation</span>
+            <div className="w-3 h-3 rounded-full bg-yellow-100 ml-2"></div>
+            <span className="text-xs">Awaiting payment</span>
+            <div className="w-3 h-3 rounded-full bg-gray-200 ml-2"></div>
+            <span className="text-xs">Blocked dates</span>
+          </div>
+        </form>
+      </CardContent>
+      <CardFooter>
         <Button
           type="submit"
-          className="w-full bg-gouna-sand hover:bg-gouna-sand-dark text-white"
-          disabled={isSubmitting || !isDateRangeValid()}
+          className="w-full bg-gouna-blue hover:bg-gouna-blue-dark"
+          disabled={isSubmitting || !checkIn || !checkOut || nights <= 0}
+          onClick={handleSubmit}
         >
-          {isSubmitting ? "Processing..." : "Request Booking"}
+          {isSubmitting ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...
+            </>
+          ) : (
+            "Request Booking"
+          )}
         </Button>
-
-        <p className="text-xs text-gray-500 text-center">
-          By clicking "Request Booking", you agree to our terms and conditions.
-        </p>
-      </form>
-    </div>
+      </CardFooter>
+    </Card>
   )
 }

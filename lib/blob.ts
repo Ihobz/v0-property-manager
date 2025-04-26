@@ -1,30 +1,45 @@
-// Update the uploadPropertyImage function to use the API route
-export async function uploadPropertyImage(file: File) {
+import { logError, logInfo } from "@/lib/logging"
+
+// Helper function for all uploads
+async function uploadFile(file: File, folder: string) {
   try {
-    console.log("Starting image upload to Vercel Blob:", file.name, file.type, file.size)
+    logInfo("Upload attempt", `Uploading ${file.name} (${file.size} bytes) to ${folder}`)
+
+    // Validate file
+    if (!file || file.size === 0) {
+      throw new Error("Invalid or empty file")
+    }
 
     // Create form data
     const formData = new FormData()
     formData.append("file", file)
-    formData.append("folder", "property-images")
+    formData.append("folder", folder)
 
-    // Use the API route instead of direct Blob access
+    // Use the API route with better error handling
     const response = await fetch("/api/upload", {
       method: "POST",
       body: formData,
     })
 
+    // Check for non-OK responses
     if (!response.ok) {
-      const errorData = await response.json()
-      throw new Error(errorData.error || `Upload failed with status: ${response.status}`)
+      let errorMessage = `Upload failed with status: ${response.status}`
+      try {
+        const errorData = await response.json()
+        errorMessage = errorData.error || errorMessage
+      } catch (e) {
+        // If we can't parse the error JSON, use the default message
+      }
+      throw new Error(errorMessage)
     }
 
     const result = await response.json()
+    logInfo("Upload success", `File uploaded successfully to ${result.url}`)
 
     return { url: result.url, success: true }
   } catch (error) {
-    console.error("Error uploading property image:", error)
-    const errorMessage = error instanceof Error ? `Upload error: ${error.message}` : "Unknown error during upload"
+    const errorMessage = error instanceof Error ? error.message : "Unknown upload error"
+    logError("Upload error", `Error uploading ${file.name}: ${errorMessage}`)
     return {
       url: null,
       success: false,
@@ -33,61 +48,14 @@ export async function uploadPropertyImage(file: File) {
   }
 }
 
-// Update the other upload functions similarly
+export async function uploadPropertyImage(file: File) {
+  return uploadFile(file, "property-images")
+}
+
 export async function uploadPaymentProof(file: File) {
-  try {
-    const formData = new FormData()
-    formData.append("file", file)
-    formData.append("folder", "payment-proofs")
-
-    const response = await fetch("/api/upload", {
-      method: "POST",
-      body: formData,
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new Error(errorData.error || `Upload failed with status: ${response.status}`)
-    }
-
-    const result = await response.json()
-    return { url: result.url, success: true }
-  } catch (error) {
-    console.error("Error uploading payment proof:", error)
-    const errorMessage = error instanceof Error ? `Upload error: ${error.message}` : "Unknown error during upload"
-    return {
-      url: null,
-      success: false,
-      error: errorMessage,
-    }
-  }
+  return uploadFile(file, "payment-proofs")
 }
 
 export async function uploadTenantDocument(file: File) {
-  try {
-    const formData = new FormData()
-    formData.append("file", file)
-    formData.append("folder", "tenant-documents")
-
-    const response = await fetch("/api/upload", {
-      method: "POST",
-      body: formData,
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json()
-      throw new Error(errorData.error || `Upload failed with status: ${response.status}`)
-    }
-
-    const result = await response.json()
-    return { url: result.url, success: true }
-  } catch (error) {
-    console.error("Error uploading tenant document:", error)
-    const errorMessage = error instanceof Error ? `Upload error: ${error.message}` : "Unknown error during upload"
-    return {
-      url: null,
-      success: false,
-      error: errorMessage,
-    }
-  }
+  return uploadFile(file, "tenant-documents")
 }

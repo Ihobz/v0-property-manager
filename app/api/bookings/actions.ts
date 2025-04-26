@@ -4,6 +4,7 @@ import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 import { sendBookingConfirmationEmail, sendBookingStatusUpdateEmail } from "@/lib/email-service"
 import { normalizeBookingId } from "@/lib/booking-utils"
+import { logBookingEvent } from "@/lib/logging"
 
 // Type for booking data
 type BookingData = {
@@ -21,7 +22,21 @@ type BookingData = {
 // Create a new booking
 export async function createBooking(bookingData: any) {
   try {
+    await logBookingEvent("Creating new booking", "info", { bookingData })
     const supabase = createServerSupabaseClient()
+
+    // Validate the booking data
+    if (
+      !bookingData.property_id ||
+      !bookingData.name ||
+      !bookingData.email ||
+      !bookingData.check_in ||
+      !bookingData.check_out
+    ) {
+      const errorMsg = "Missing required booking fields"
+      await logBookingEvent(errorMsg, "error", { bookingData })
+      return { booking: null, error: errorMsg }
+    }
 
     // Insert the booking
     const { data, error } = await supabase
@@ -35,9 +50,12 @@ export async function createBooking(bookingData: any) {
       .single()
 
     if (error) {
+      await logBookingEvent("Error creating booking", "error", { error, bookingData })
       console.error("Error creating booking:", error)
       return { booking: null, error: error.message }
     }
+
+    await logBookingEvent("Booking created successfully", "info", { bookingId: data.id })
 
     // Get property details for the email
     const { data: property, error: propertyError } = await supabase
@@ -45,6 +63,13 @@ export async function createBooking(bookingData: any) {
       .select("title, location")
       .eq("id", bookingData.property_id)
       .single()
+
+    if (propertyError) {
+      await logBookingEvent("Error fetching property details for email", "warning", {
+        propertyError,
+        bookingId: data.id,
+      })
+    }
 
     if (!propertyError && property) {
       // Send confirmation email
@@ -58,7 +83,12 @@ export async function createBooking(bookingData: any) {
           checkOut: bookingData.check_out,
           totalPrice: bookingData.total_price,
         })
+        await logBookingEvent("Booking confirmation email sent", "info", {
+          bookingId: data.id,
+          email: bookingData.email,
+        })
       } catch (emailError) {
+        await logBookingEvent("Error sending confirmation email", "warning", { emailError, bookingId: data.id })
         console.error("Error sending confirmation email:", emailError)
         // Continue even if email fails
       }
@@ -69,8 +99,10 @@ export async function createBooking(bookingData: any) {
 
     return { booking: data, error: null }
   } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : "Failed to create booking"
+    await logBookingEvent("Unexpected error in createBooking", "error", { error })
     console.error("Error in createBooking:", error)
-    return { booking: null, error: "Failed to create booking" }
+    return { booking: null, error: errorMsg }
   }
 }
 
@@ -93,12 +125,14 @@ export async function getBookings() {
       .order("created_at", { ascending: false })
 
     if (error) {
+      await logBookingEvent("Error fetching all bookings", "error", { error })
       console.error("Error fetching bookings:", error)
       return { bookings: [], error: error.message }
     }
 
     return { bookings: data, error: null }
   } catch (error) {
+    await logBookingEvent("Unexpected error in getBookings", "error", { error })
     console.error("Error in getBookings:", error)
     return { bookings: [], error: "Failed to fetch bookings" }
   }
@@ -110,9 +144,11 @@ export async function getBookingById(id: string) {
     // Normalize the booking ID
     const bookingId = normalizeBookingId(id)
     console.log(`Server Action: Fetching booking with raw ID: "${id}", normalized ID: "${bookingId}"`)
+    await logBookingEvent(`Fetching booking by ID: ${id}`, "info", { rawId: id, normalizedId: bookingId })
 
     if (!bookingId) {
       console.error("Server Action: No valid booking ID provided")
+      await logBookingEvent("No valid booking ID provided", "error", { rawId: id })
       return { booking: null, error: "No valid booking ID provided" }
     }
 
@@ -141,6 +177,7 @@ export async function getBookingById(id: string) {
 
     if (error) {
       console.error(`Server Action: Error fetching booking with ID "${bookingId}":`, error)
+      await logBookingEvent(`Error fetching booking with ID: ${bookingId}`, "error", { error })
       return {
         booking: null,
         error: error.message,
@@ -154,13 +191,16 @@ export async function getBookingById(id: string) {
 
     if (!data) {
       console.error(`Server Action: No booking found with ID "${bookingId}"`)
+      await logBookingEvent(`No booking found with ID: ${bookingId}`, "warning")
       return { booking: null, error: "Booking not found" }
     }
 
     console.log(`Server Action: Successfully retrieved booking with ID "${bookingId}"`)
+    await logBookingEvent(`Successfully retrieved booking with ID: ${bookingId}`, "info")
     return { booking: data, error: null }
   } catch (error) {
     console.error("Server Action: Unexpected error:", error)
+    await logBookingEvent("Unexpected error in getBookingById", "error", { error })
     return {
       booking: null,
       error: "Failed to fetch booking",
@@ -191,12 +231,14 @@ export async function getBookingsByEmail(email: string) {
       .order("created_at", { ascending: false })
 
     if (error) {
+      await logBookingEvent(`Error checking bookings by email: ${email}`, "error", { error })
       console.error("Error checking bookings by email:", error)
       return { bookings: [], error: error.message }
     }
 
     return { bookings: data, error: null }
   } catch (error) {
+    await logBookingEvent("Unexpected error in getBookingsByEmail", "error", { error })
     console.error("Error in checkBookingByEmail:", error)
     return { bookings: [], error: "Failed to check bookings" }
   }
@@ -207,8 +249,10 @@ export async function updateBookingStatus(id: string, status: string) {
   try {
     // Normalize the booking ID
     const bookingId = normalizeBookingId(id)
+    await logBookingEvent(`Updating booking status: ${id} to ${status}`, "info", { bookingId, status })
 
     if (!bookingId) {
+      await logBookingEvent("No valid booking ID provided for status update", "error", { rawId: id })
       return { success: false, error: "No valid booking ID provided" }
     }
 
@@ -218,6 +262,7 @@ export async function updateBookingStatus(id: string, status: string) {
     const { booking, error: fetchError } = await getBookingById(bookingId)
 
     if (fetchError || !booking) {
+      await logBookingEvent("Error fetching booking for status update", "error", { fetchError, bookingId })
       console.error("Error fetching booking for status update:", fetchError)
       return { success: false, error: fetchError || "Booking not found" }
     }
@@ -232,9 +277,12 @@ export async function updateBookingStatus(id: string, status: string) {
       .eq("id", bookingId)
 
     if (error) {
+      await logBookingEvent("Error updating booking status", "error", { error, bookingId, status })
       console.error("Error updating booking status:", error)
       return { success: false, error: error.message }
     }
+
+    await logBookingEvent(`Booking status updated successfully to ${status}`, "info", { bookingId })
 
     // Send email notification
     try {
@@ -247,7 +295,9 @@ export async function updateBookingStatus(id: string, status: string) {
         checkOut: booking.check_out,
         status,
       })
+      await logBookingEvent("Status update email sent", "info", { bookingId, email: booking.email, status })
     } catch (emailError) {
+      await logBookingEvent("Error sending status update email", "warning", { emailError, bookingId })
       console.error("Error sending status update email:", emailError)
       // Continue even if email fails
     }
@@ -259,71 +309,22 @@ export async function updateBookingStatus(id: string, status: string) {
 
     return { success: true }
   } catch (error) {
+    await logBookingEvent("Unexpected error in updateBookingStatus", "error", { error })
     console.error("Error in updateBookingStatus:", error)
     return { success: false, error: "Failed to update booking status" }
   }
 }
-
-// Update booking cleaning fee
-// export async function updateBookingCleaningFee(id: string, cleaningFee: number) {
-//   try {
-//     // Normalize the booking ID
-//     const bookingId = normalizeBookingId(id)
-
-//     if (!bookingId) {
-//       return { success: false, error: "No valid booking ID provided" }
-//     }
-
-//     const supabase = createServerSupabaseClient()
-
-//     // First get the current booking to calculate new total price
-//     const { data: booking, error: fetchError } = await supabase
-//       .from("bookings")
-//       .select("base_price")
-//       .eq("id", bookingId)
-//       .single()
-
-//     if (fetchError) {
-//       console.error("Error fetching booking:", fetchError)
-//       return { success: false, error: fetchError.message }
-//     }
-
-//     // Calculate new total price
-//     const totalPrice = booking.base_price + cleaningFee
-
-//     // Update booking
-//     const { error } = await supabase
-//       .from("bookings")
-//       .update({
-//         cleaning_fee: cleaningFee,
-//         total_price: totalPrice,
-//       })
-//       .eq("id", bookingId)
-
-//     if (error) {
-//       console.error("Error updating booking cleaning fee:", error)
-//       return { success: false, error: error.message }
-//     }
-
-//     // Revalidate paths
-//     revalidatePath("/admin/bookings")
-//     revalidatePath(`/admin/bookings/${bookingId}`)
-
-//     return { success: true }
-//   } catch (error) {
-//     console.error("Error in updateBookingCleaningFee:", error)
-//     return { success: false, error: "Failed to update booking cleaning fee" }
-//   }
-// }
 
 /**
  * Updates the cleaning fee for a booking
  */
 export async function updateBookingCleaningFee(bookingId: string, cleaningFee: number) {
   console.log(`Updating cleaning fee for booking ID: "${bookingId}" to $${cleaningFee}`)
+  await logBookingEvent(`Updating cleaning fee for booking ID: ${bookingId} to $${cleaningFee}`, "info")
 
   try {
     if (!bookingId) {
+      await logBookingEvent("No booking ID provided for cleaning fee update", "error")
       return { success: false, error: "No booking ID provided" }
     }
 
@@ -337,6 +338,7 @@ export async function updateBookingCleaningFee(bookingId: string, cleaningFee: n
       .single()
 
     if (fetchError) {
+      await logBookingEvent("Error fetching booking for cleaning fee update", "error", { fetchError, bookingId })
       console.error("Error fetching booking for cleaning fee update:", fetchError)
       return { success: false, error: fetchError.message }
     }
@@ -355,9 +357,12 @@ export async function updateBookingCleaningFee(bookingId: string, cleaningFee: n
       .eq("id", bookingId)
 
     if (updateError) {
+      await logBookingEvent("Error updating cleaning fee", "error", { updateError, bookingId })
       console.error("Error updating cleaning fee:", updateError)
       return { success: false, error: updateError.message }
     }
+
+    await logBookingEvent("Cleaning fee updated successfully", "info", { bookingId, cleaningFee, totalPrice })
 
     // Revalidate paths
     revalidatePath("/admin/bookings")
@@ -365,6 +370,7 @@ export async function updateBookingCleaningFee(bookingId: string, cleaningFee: n
 
     return { success: true }
   } catch (error) {
+    await logBookingEvent("Unexpected error updating cleaning fee", "error", { error, bookingId })
     console.error("Unexpected error updating cleaning fee:", error)
     return {
       success: false,
@@ -378,8 +384,10 @@ export async function updatePaymentProof(id: string, paymentProofUrl: string) {
   try {
     // Normalize the booking ID
     const bookingId = normalizeBookingId(id)
+    await logBookingEvent(`Updating payment proof for booking: ${id}`, "info", { bookingId })
 
     if (!bookingId) {
+      await logBookingEvent("No valid booking ID provided for payment proof update", "error", { rawId: id })
       return { success: false, error: "No valid booking ID provided" }
     }
 
@@ -394,9 +402,12 @@ export async function updatePaymentProof(id: string, paymentProofUrl: string) {
       .eq("id", bookingId)
 
     if (error) {
+      await logBookingEvent("Error updating payment proof", "error", { error, bookingId })
       console.error("Error updating payment proof:", error)
       return { success: false, error: error.message }
     }
+
+    await logBookingEvent("Payment proof updated successfully", "info", { bookingId })
 
     // Revalidate paths
     revalidatePath("/admin/bookings")
@@ -405,6 +416,7 @@ export async function updatePaymentProof(id: string, paymentProofUrl: string) {
 
     return { success: true }
   } catch (error) {
+    await logBookingEvent("Unexpected error in updatePaymentProof", "error", { error })
     console.error("Error in updatePaymentProof:", error)
     return { success: false, error: "Failed to update payment proof" }
   }
@@ -415,8 +427,10 @@ export async function addTenantIdDocument(id: string, documentUrl: string) {
   try {
     // Normalize the booking ID
     const bookingId = normalizeBookingId(id)
+    await logBookingEvent(`Adding tenant ID document for booking: ${id}`, "info", { bookingId })
 
     if (!bookingId) {
+      await logBookingEvent("No valid booking ID provided for tenant ID document", "error", { rawId: id })
       return { success: false, error: "No valid booking ID provided" }
     }
 
@@ -430,6 +444,7 @@ export async function addTenantIdDocument(id: string, documentUrl: string) {
       .single()
 
     if (fetchError) {
+      await logBookingEvent("Error fetching booking for tenant ID document", "error", { fetchError, bookingId })
       console.error("Error fetching booking:", fetchError)
       return { success: false, error: fetchError.message }
     }
@@ -454,9 +469,12 @@ export async function addTenantIdDocument(id: string, documentUrl: string) {
     const { error } = await supabase.from("bookings").update({ tenant_id: tenantIds }).eq("id", bookingId)
 
     if (error) {
+      await logBookingEvent("Error adding tenant ID document", "error", { error, bookingId })
       console.error("Error adding tenant ID document:", error)
       return { success: false, error: error.message }
     }
+
+    await logBookingEvent("Tenant ID document added successfully", "info", { bookingId })
 
     // Revalidate paths
     revalidatePath("/admin/bookings")
@@ -465,54 +483,32 @@ export async function addTenantIdDocument(id: string, documentUrl: string) {
 
     return { success: true }
   } catch (error) {
+    await logBookingEvent("Unexpected error in addTenantIdDocument", "error", { error })
     console.error("Error in addTenantIdDocument:", error)
     return { success: false, error: "Failed to add tenant ID document" }
   }
 }
-
-// Verify if a booking ID exists
-// export async function verifyBookingId(id: string) {
-//   try {
-//     // Normalize the booking ID
-//     const bookingId = normalizeBookingId(id)
-
-//     if (!bookingId) {
-//       return { exists: false, error: "No valid booking ID provided" }
-//     }
-
-//     const supabase = createServerSupabaseClient()
-
-//     const { data, error } = await supabase.from("bookings").select("id").eq("id", bookingId).single()
-
-//     if (error) {
-//       console.error(`Error verifying booking ID "${bookingId}":`, error)
-//       return { exists: false, error: error.message }
-//     }
-
-//     return { exists: !!data, bookingId: data?.id || null }
-//   } catch (error) {
-//     console.error("Error in verifyBookingId:", error)
-//     return { exists: false, error: "Failed to verify booking ID" }
-//   }
-// }
 
 /**
  * Verifies if a booking ID exists in the database
  */
 export async function verifyBookingId(bookingId: string) {
   console.log(`Verifying booking ID: "${bookingId}"`)
+  await logBookingEvent(`Verifying booking ID: ${bookingId}`, "info")
 
   try {
     if (!bookingId) {
+      await logBookingEvent("No booking ID provided for verification", "error")
       return { exists: false, error: "No booking ID provided" }
     }
 
     const supabase = createServerSupabaseClient()
 
     // Check if the booking exists
-    const { data, error } = await supabase.from("bookings").select("id").eq("id", bookingId).maybeSingle()
+    const { data, error } = await supabase.from("bookings").select("id, status").eq("id", bookingId).maybeSingle()
 
     if (error) {
+      await logBookingEvent("Error verifying booking ID", "error", { error, bookingId })
       console.error("Error verifying booking ID:", error)
       return {
         exists: false,
@@ -525,11 +521,15 @@ export async function verifyBookingId(bookingId: string) {
       }
     }
 
+    await logBookingEvent(`Booking verification result: ${!!data}`, "info", { bookingId, exists: !!data })
+
     return {
       exists: !!data,
       bookingId: data?.id || null,
+      status: data?.status || null,
     }
   } catch (error) {
+    await logBookingEvent("Unexpected error verifying booking ID", "error", { error, bookingId })
     console.error("Unexpected error verifying booking ID:", error)
     return {
       exists: false,
