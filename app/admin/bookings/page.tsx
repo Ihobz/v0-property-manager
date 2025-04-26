@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
+import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -175,12 +176,6 @@ export default function BookingsPage() {
     }
   }
 
-  // Fixed the View action to properly navigate to the booking details page
-  const handleViewBooking = (bookingId: string) => {
-    console.log("Viewing booking:", bookingId)
-    router.push(`/admin/bookings/${bookingId}`)
-  }
-
   const handleViewPropertyCalendar = (propertyId: string) => {
     router.push(`/admin/properties/calendar/${propertyId}`)
   }
@@ -307,14 +302,12 @@ export default function BookingsPage() {
                       </td>
                       <td className="px-4 py-3 text-sm">
                         <div className="flex flex-wrap gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8 px-3"
-                            onClick={() => handleViewBooking(booking.id)}
-                          >
-                            <Eye className="h-4 w-4 mr-1" /> View
-                          </Button>
+                          {/* Changed to Link component for more reliable navigation */}
+                          <Link href={`/admin/bookings/${booking.id}`} passHref>
+                            <Button variant="outline" size="sm" className="h-8 px-3" as="a">
+                              <Eye className="h-4 w-4 mr-1" /> View
+                            </Button>
+                          </Link>
 
                           {booking.status === "awaiting_confirmation" && booking.payment_proof && (
                             <Button
