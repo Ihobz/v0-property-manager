@@ -7,9 +7,18 @@ import { Calendar, Clock, MapPin, Users, Home, Phone, Mail, AlertCircle, CheckCi
 import Link from "next/link"
 import Image from "next/image"
 import { notFound } from "next/navigation"
+import { decodeBookingId, formatBookingIdForDisplay } from "@/lib/booking-utils"
 
 export default async function BookingStatusPage({ params }: { params: { id: string } }) {
-  const { booking, error } = await getBookingById(params.id)
+  // Decode the booking ID from the URL
+  const encodedId = params.id
+  const bookingId = decodeBookingId(encodedId)
+
+  if (!bookingId) {
+    return notFound()
+  }
+
+  const { booking, error } = await getBookingById(bookingId)
 
   if (error || !booking) {
     return notFound()
@@ -101,7 +110,7 @@ export default async function BookingStatusPage({ params }: { params: { id: stri
             <CardHeader className="bg-gouna-blue text-white rounded-t-lg">
               <div className="flex justify-between items-center">
                 <div>
-                  <CardTitle>Booking #{booking.id.substring(0, 8)}</CardTitle>
+                  <CardTitle>Booking #{formatBookingIdForDisplay(booking.id)}</CardTitle>
                   <CardDescription className="text-gray-200">
                     Booked on {formatDate(booking.created_at)}
                   </CardDescription>

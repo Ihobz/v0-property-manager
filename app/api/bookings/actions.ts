@@ -3,6 +3,7 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
 import { sendBookingConfirmationEmail, sendBookingStatusUpdateEmail } from "@/lib/email-service"
+import { normalizeBookingId } from "@/lib/booking-utils"
 
 // Type for booking data
 type BookingData = {
@@ -106,17 +107,19 @@ export async function getBookings() {
 // Get booking by ID with improved error handling
 export async function getBookingById(id: string) {
   try {
-    console.log(`Server Action: Fetching booking with ID: "${id}"`)
+    // Normalize the booking ID
+    const bookingId = normalizeBookingId(id)
+    console.log(`Server Action: Fetching booking with raw ID: "${id}", normalized ID: "${bookingId}"`)
 
-    if (!id) {
-      console.error("Server Action: No booking ID provided")
-      return { booking: null, error: "No booking ID provided" }
+    if (!bookingId) {
+      console.error("Server Action: No valid booking ID provided")
+      return { booking: null, error: "No valid booking ID provided" }
     }
 
     const supabase = createServerSupabaseClient()
 
     // Log the exact query we're about to make
-    console.log(`Server Action: Executing query for booking ID: "${id}"`)
+    console.log(`Server Action: Executing query for booking ID: "${bookingId}"`)
 
     const { data, error } = await supabase
       .from("bookings")
@@ -133,24 +136,36 @@ export async function getBookingById(id: string) {
           guests
         )
       `)
-      .eq("id", id)
+      .eq("id", bookingId)
       .single()
 
     if (error) {
-      console.error(`Server Action: Error fetching booking with ID "${id}":`, error)
-      return { booking: null, error: error.message }
+      console.error(`Server Action: Error fetching booking with ID "${bookingId}":`, error)
+      return {
+        booking: null,
+        error: error.message,
+        details: {
+          code: error.code,
+          hint: error.hint,
+          details: error.details,
+        },
+      }
     }
 
     if (!data) {
-      console.error(`Server Action: No booking found with ID "${id}"`)
+      console.error(`Server Action: No booking found with ID "${bookingId}"`)
       return { booking: null, error: "Booking not found" }
     }
 
-    console.log(`Server Action: Successfully retrieved booking with ID "${id}"`)
+    console.log(`Server Action: Successfully retrieved booking with ID "${bookingId}"`)
     return { booking: data, error: null }
   } catch (error) {
     console.error("Server Action: Unexpected error:", error)
-    return { booking: null, error: "Failed to fetch booking" }
+    return {
+      booking: null,
+      error: "Failed to fetch booking",
+      details: error instanceof Error ? error.message : String(error),
+    }
   }
 }
 
@@ -168,7 +183,8 @@ export async function getBookingsByEmail(email: string) {
         check_out,
         created_at,
         properties:property_id (
-          title
+          title,
+          location
         )
       `)
       .eq("email", email)
@@ -189,10 +205,17 @@ export async function getBookingsByEmail(email: string) {
 // Update booking status
 export async function updateBookingStatus(id: string, status: string) {
   try {
+    // Normalize the booking ID
+    const bookingId = normalizeBookingId(id)
+
+    if (!bookingId) {
+      return { success: false, error: "No valid booking ID provided" }
+    }
+
     const supabase = createServerSupabaseClient()
 
     // Get the booking first to have the email and property info
-    const { booking, error: fetchError } = await getBookingById(id)
+    const { booking, error: fetchError } = await getBookingById(bookingId)
 
     if (fetchError || !booking) {
       console.error("Error fetching booking for status update:", fetchError)
@@ -206,7 +229,7 @@ export async function updateBookingStatus(id: string, status: string) {
         status,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", id)
+      .eq("id", bookingId)
 
     if (error) {
       console.error("Error updating booking status:", error)
@@ -231,8 +254,8 @@ export async function updateBookingStatus(id: string, status: string) {
 
     // Revalidate paths
     revalidatePath(`/admin/bookings`)
-    revalidatePath(`/admin/bookings/${id}`)
-    revalidatePath(`/booking-status/${id}`)
+    revalidatePath(`/admin/bookings/${bookingId}`)
+    revalidatePath(`/booking-status/${bookingId}`)
 
     return { success: true }
   } catch (error) {
@@ -244,13 +267,20 @@ export async function updateBookingStatus(id: string, status: string) {
 // Update booking cleaning fee
 export async function updateBookingCleaningFee(id: string, cleaningFee: number) {
   try {
+    // Normalize the booking ID
+    const bookingId = normalizeBookingId(id)
+
+    if (!bookingId) {
+      return { success: false, error: "No valid booking ID provided" }
+    }
+
     const supabase = createServerSupabaseClient()
 
     // First get the current booking to calculate new total price
     const { data: booking, error: fetchError } = await supabase
       .from("bookings")
       .select("base_price")
-      .eq("id", id)
+      .eq("id", bookingId)
       .single()
 
     if (fetchError) {
@@ -268,7 +298,7 @@ export async function updateBookingCleaningFee(id: string, cleaningFee: number) 
         cleaning_fee: cleaningFee,
         total_price: totalPrice,
       })
-      .eq("id", id)
+      .eq("id", bookingId)
 
     if (error) {
       console.error("Error updating booking cleaning fee:", error)
@@ -277,7 +307,7 @@ export async function updateBookingCleaningFee(id: string, cleaningFee: number) 
 
     // Revalidate paths
     revalidatePath("/admin/bookings")
-    revalidatePath(`/admin/bookings/${id}`)
+    revalidatePath(`/admin/bookings/${bookingId}`)
 
     return { success: true }
   } catch (error) {
@@ -289,6 +319,13 @@ export async function updateBookingCleaningFee(id: string, cleaningFee: number) 
 // Update booking payment proof
 export async function updatePaymentProof(id: string, paymentProofUrl: string) {
   try {
+    // Normalize the booking ID
+    const bookingId = normalizeBookingId(id)
+
+    if (!bookingId) {
+      return { success: false, error: "No valid booking ID provided" }
+    }
+
     const supabase = createServerSupabaseClient()
 
     const { error } = await supabase
@@ -297,7 +334,7 @@ export async function updatePaymentProof(id: string, paymentProofUrl: string) {
         payment_proof: paymentProofUrl,
         status: "awaiting_confirmation", // Update status when payment proof is uploaded
       })
-      .eq("id", id)
+      .eq("id", bookingId)
 
     if (error) {
       console.error("Error updating payment proof:", error)
@@ -306,8 +343,8 @@ export async function updatePaymentProof(id: string, paymentProofUrl: string) {
 
     // Revalidate paths
     revalidatePath("/admin/bookings")
-    revalidatePath(`/admin/bookings/${id}`)
-    revalidatePath(`/upload/${id}`)
+    revalidatePath(`/admin/bookings/${bookingId}`)
+    revalidatePath(`/upload/${bookingId}`)
 
     return { success: true }
   } catch (error) {
@@ -319,13 +356,20 @@ export async function updatePaymentProof(id: string, paymentProofUrl: string) {
 // Add tenant ID document
 export async function addTenantIdDocument(id: string, documentUrl: string) {
   try {
+    // Normalize the booking ID
+    const bookingId = normalizeBookingId(id)
+
+    if (!bookingId) {
+      return { success: false, error: "No valid booking ID provided" }
+    }
+
     const supabase = createServerSupabaseClient()
 
     // First get the current booking to check existing tenant IDs
     const { data: booking, error: fetchError } = await supabase
       .from("bookings")
       .select("tenant_id")
-      .eq("id", id)
+      .eq("id", bookingId)
       .single()
 
     if (fetchError) {
@@ -350,7 +394,7 @@ export async function addTenantIdDocument(id: string, documentUrl: string) {
     }
 
     // Update the booking with the new tenant_id array
-    const { error } = await supabase.from("bookings").update({ tenant_id: tenantIds }).eq("id", id)
+    const { error } = await supabase.from("bookings").update({ tenant_id: tenantIds }).eq("id", bookingId)
 
     if (error) {
       console.error("Error adding tenant ID document:", error)
@@ -359,12 +403,38 @@ export async function addTenantIdDocument(id: string, documentUrl: string) {
 
     // Revalidate paths
     revalidatePath("/admin/bookings")
-    revalidatePath(`/admin/bookings/${id}`)
-    revalidatePath(`/upload/${id}`)
+    revalidatePath(`/admin/bookings/${bookingId}`)
+    revalidatePath(`/upload/${bookingId}`)
 
     return { success: true }
   } catch (error) {
     console.error("Error in addTenantIdDocument:", error)
     return { success: false, error: "Failed to add tenant ID document" }
+  }
+}
+
+// Verify if a booking ID exists
+export async function verifyBookingId(id: string) {
+  try {
+    // Normalize the booking ID
+    const bookingId = normalizeBookingId(id)
+
+    if (!bookingId) {
+      return { exists: false, error: "No valid booking ID provided" }
+    }
+
+    const supabase = createServerSupabaseClient()
+
+    const { data, error } = await supabase.from("bookings").select("id").eq("id", bookingId).single()
+
+    if (error) {
+      console.error(`Error verifying booking ID "${bookingId}":`, error)
+      return { exists: false, error: error.message }
+    }
+
+    return { exists: !!data, bookingId: data?.id || null }
+  } catch (error) {
+    console.error("Error in verifyBookingId:", error)
+    return { exists: false, error: "Failed to verify booking ID" }
   }
 }

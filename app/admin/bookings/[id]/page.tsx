@@ -24,10 +24,11 @@ import {
   Loader2,
   AlertTriangle,
   Info,
+  RefreshCw,
 } from "lucide-react"
 import { useAuth } from "@/lib/auth-provider"
 import { toast } from "@/components/ui/use-toast"
-import { updateBookingStatus, getBookingById } from "@/app/api/bookings/actions"
+import { updateBookingStatus, getBookingById, updateBookingCleaningFee } from "@/app/api/bookings/actions"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -38,16 +39,19 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { decodeBookingId, formatBookingIdForDisplay } from "@/lib/booking-utils"
 
 export default function BookingDetailsPage() {
   const params = useParams()
   const router = useRouter()
-  const bookingId = params.id as string
+  const encodedBookingId = params.id as string
+  const bookingId = decodeBookingId(encodedBookingId)
 
   const [booking, setBooking] = useState<any>(null)
   const [property, setProperty] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [errorDetails, setErrorDetails] = useState<any>(null)
   const [cleaningFee, setCleaningFee] = useState(0)
   const [confirmationMessage, setConfirmationMessage] = useState("")
   const [retryCount, setRetryCount] = useState(0)
@@ -57,6 +61,7 @@ export default function BookingDetailsPage() {
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false)
   const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
+  const [isUpdatingCleaningFee, setIsUpdatingCleaningFee] = useState(false)
 
   const { isAuthenticated } = useAuth()
 
@@ -64,20 +69,27 @@ export default function BookingDetailsPage() {
   const loadBookingData = async () => {
     if (!bookingId) {
       setError("No booking ID provided")
+      setDebugInfo({
+        encodedBookingId,
+        decodedBookingId: bookingId,
+        error: "No booking ID provided",
+      })
       setIsLoading(false)
       return
     }
 
     setIsLoading(true)
     setError(null)
+    setErrorDetails(null)
 
     try {
       console.log(`Loading booking data for ID: "${bookingId}" (Attempt ${retryCount + 1})`)
 
       // Use the server action to get booking data
-      const { booking: fetchedBooking, error: fetchError } = await getBookingById(bookingId)
+      const { booking: fetchedBooking, error: fetchError, details: errorDetails } = await getBookingById(bookingId)
 
       if (fetchError) {
+        setErrorDetails(errorDetails)
         throw new Error(fetchError)
       }
 
@@ -93,7 +105,8 @@ export default function BookingDetailsPage() {
 
       // Set debug info
       setDebugInfo({
-        bookingId: bookingId,
+        encodedBookingId,
+        decodedBookingId: bookingId,
         bookingIdType: typeof bookingId,
         bookingIdLength: bookingId.length,
         fetchedId: fetchedBooking.id,
@@ -107,10 +120,12 @@ export default function BookingDetailsPage() {
 
       // Set debug info for error case
       setDebugInfo({
-        bookingId: bookingId,
+        encodedBookingId,
+        decodedBookingId: bookingId,
         bookingIdType: typeof bookingId,
-        bookingIdLength: bookingId.length,
+        bookingIdLength: bookingId ? bookingId.length : 0,
         error: err instanceof Error ? err.message : String(err),
+        errorDetails,
       })
     } finally {
       setIsLoading(false)
@@ -131,6 +146,8 @@ export default function BookingDetailsPage() {
   }
 
   const handleConfirmBooking = async () => {
+    if (!bookingId) return
+
     setIsProcessing(true)
     try {
       const result = await updateBookingStatus(bookingId, "confirmed")
@@ -162,6 +179,8 @@ export default function BookingDetailsPage() {
   }
 
   const handleCancelBooking = async () => {
+    if (!bookingId) return
+
     setIsProcessing(true)
     try {
       const result = await updateBookingStatus(bookingId, "cancelled")
@@ -193,11 +212,41 @@ export default function BookingDetailsPage() {
   }
 
   const handleUpdateCleaningFee = async () => {
-    // In a real app, this would update the cleaning fee in the database
-    toast({
-      title: "Cleaning fee updated",
-      description: "The cleaning fee has been updated successfully.",
-    })
+    if (!bookingId) return
+
+    setIsUpdatingCleaningFee(true)
+    try {
+      const result = await updateBookingCleaningFee(bookingId, cleaningFee)
+      if (result.success) {
+        toast({
+          title: "Cleaning fee updated",
+          description: "The cleaning fee has been updated successfully.",
+        })
+
+        // Update the local state to reflect the change
+        const newTotalPrice = booking.base_price + cleaningFee
+        setBooking({
+          ...booking,
+          cleaning_fee: cleaningFee,
+          total_price: newTotalPrice,
+        })
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: result.error || "Failed to update cleaning fee. Please try again.",
+        })
+      }
+    } catch (error) {
+      console.error("Error updating cleaning fee:", error)
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "An unexpected error occurred.",
+      })
+    } finally {
+      setIsUpdatingCleaningFee(false)
+    }
   }
 
   if (isLoading) {
@@ -205,7 +254,7 @@ export default function BookingDetailsPage() {
       <div className="container py-12 flex flex-col items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-gouna-blue mb-4" />
         <p className="text-gray-600">Loading booking details...</p>
-        <p className="text-sm text-gray-500 mt-2">Booking ID: {bookingId}</p>
+        <p className="text-sm text-gray-500 mt-2">Booking ID: {formatBookingIdForDisplay(bookingId)}</p>
       </div>
     )
   }
@@ -235,11 +284,20 @@ export default function BookingDetailsPage() {
                 <Info className="h-4 w-4 mr-1" /> Debug Information
               </h3>
               <pre className="text-xs bg-gray-100 p-2 rounded overflow-auto">{JSON.stringify(debugInfo, null, 2)}</pre>
+
+              {errorDetails && (
+                <div className="mt-2">
+                  <h4 className="font-medium text-sm mb-1">Error Details:</h4>
+                  <pre className="text-xs bg-gray-100 p-2 rounded overflow-auto">
+                    {JSON.stringify(errorDetails, null, 2)}
+                  </pre>
+                </div>
+              )}
             </div>
 
             <div className="flex gap-4">
               <Button className="bg-red-600 hover:bg-red-700 text-white" onClick={handleRetry}>
-                Try Again
+                <RefreshCw className="h-4 w-4 mr-2" /> Try Again
               </Button>
               <Button variant="outline" onClick={() => router.push("/admin/bookings")}>
                 Return to Bookings
@@ -274,7 +332,7 @@ export default function BookingDetailsPage() {
 
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-gouna-blue-dark">Booking #{booking.id.substring(0, 8)}</h1>
+          <h1 className="text-3xl font-bold text-gouna-blue-dark">Booking #{formatBookingIdForDisplay(booking.id)}</h1>
           <p className="text-gray-600">Created on {new Date(booking.created_at).toLocaleDateString()}</p>
         </div>
         <Badge className={`${getStatusColor(booking.status)} text-sm px-3 py-1 mt-2 md:mt-0`}>
@@ -387,9 +445,16 @@ export default function BookingDetailsPage() {
                         />
                       </div>
                       <div className="mt-4 flex justify-end">
-                        <Button variant="outline" className="flex items-center">
-                          <Download className="h-4 w-4 mr-2" /> Download
-                        </Button>
+                        <a
+                          href={booking.payment_proof}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex"
+                        >
+                          <Button variant="outline" className="flex items-center">
+                            <Download className="h-4 w-4 mr-2" /> Download
+                          </Button>
+                        </a>
                       </div>
                     </div>
                   ) : (
@@ -417,8 +482,15 @@ export default function BookingDetailsPage() {
                       <Button
                         className="bg-gouna-blue hover:bg-gouna-blue-dark text-white"
                         onClick={handleUpdateCleaningFee}
+                        disabled={isUpdatingCleaningFee}
                       >
-                        Update Fee
+                        {isUpdatingCleaningFee ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Updating...
+                          </>
+                        ) : (
+                          "Update Fee"
+                        )}
                       </Button>
                     </div>
                   </div>
@@ -448,9 +520,11 @@ export default function BookingDetailsPage() {
                               />
                             </div>
                             <div className="mt-4 flex justify-end">
-                              <Button variant="outline" className="flex items-center">
-                                <Download className="h-4 w-4 mr-2" /> Download
-                              </Button>
+                              <a href={id} target="_blank" rel="noopener noreferrer" className="inline-flex">
+                                <Button variant="outline" className="flex items-center">
+                                  <Download className="h-4 w-4 mr-2" /> Download
+                                </Button>
+                              </a>
                             </div>
                           </div>
                         ),
@@ -478,12 +552,13 @@ export default function BookingDetailsPage() {
                     <pre className="text-xs bg-white p-3 rounded border overflow-auto">
                       {JSON.stringify(
                         {
-                          bookingId: bookingId,
+                          encodedBookingId,
+                          decodedBookingId: bookingId,
                           bookingIdType: typeof bookingId,
-                          bookingIdLength: bookingId.length,
+                          bookingIdLength: bookingId ? bookingId.length : 0,
                           fetchedId: booking.id,
                           fetchedIdType: typeof booking.id,
-                          fetchedIdLength: booking.id.length,
+                          fetchedIdLength: booking.id ? booking.id.length : 0,
                           match: bookingId === booking.id,
                         },
                         null,

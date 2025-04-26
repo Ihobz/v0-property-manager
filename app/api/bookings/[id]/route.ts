@@ -1,15 +1,19 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { createClient } from "@/lib/supabase/server"
 import { cookies } from "next/headers"
+import { normalizeBookingId } from "@/lib/booking-utils"
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
-    const bookingId = params.id
-    console.log(`API Route: Fetching booking with ID: "${bookingId}"`)
+    // Get and normalize the booking ID
+    const rawBookingId = params.id
+    const bookingId = normalizeBookingId(rawBookingId)
+
+    console.log(`API Route: Fetching booking with raw ID: "${rawBookingId}", normalized ID: "${bookingId}"`)
 
     if (!bookingId) {
-      console.error("API Route: No booking ID provided")
-      return NextResponse.json({ error: "No booking ID provided" }, { status: 400 })
+      console.error("API Route: No valid booking ID provided")
+      return NextResponse.json({ error: "No valid booking ID provided" }, { status: 400 })
     }
 
     const cookieStore = cookies()
@@ -29,7 +33,17 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 
     if (error) {
       console.error(`API Route: Error fetching booking with ID "${bookingId}":`, error)
-      return NextResponse.json({ error: error.message }, { status: 500 })
+      return NextResponse.json(
+        {
+          error: error.message,
+          details: {
+            code: error.code,
+            hint: error.hint,
+            details: error.details,
+          },
+        },
+        { status: 500 },
+      )
     }
 
     if (!booking) {
@@ -41,6 +55,12 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
     return NextResponse.json({ booking })
   } catch (error) {
     console.error("API Route: Unexpected error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    return NextResponse.json(
+      {
+        error: "Internal server error",
+        details: error instanceof Error ? error.message : String(error),
+      },
+      { status: 500 },
+    )
   }
 }

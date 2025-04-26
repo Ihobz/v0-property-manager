@@ -7,8 +7,8 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { useAuth } from "@/lib/auth-provider"
-import { getBookings, updateBookingStatus } from "@/app/api/bookings/actions"
-import { Loader2, Search, ArrowLeft, CheckCircle, XCircle, Eye, Calendar } from "lucide-react"
+import { getBookings, updateBookingStatus, verifyBookingId } from "@/app/api/bookings/actions"
+import { Loader2, Search, ArrowLeft, CheckCircle, XCircle, Eye, Calendar, AlertTriangle } from "lucide-react"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,6 +20,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { toast } from "@/components/ui/use-toast"
+import { encodeBookingId, formatBookingIdForDisplay } from "@/lib/booking-utils"
 
 export default function BookingsPage() {
   const { isAdmin } = useAuth()
@@ -39,6 +40,10 @@ export default function BookingsPage() {
   const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false)
   const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)
+
+  // State for booking verification
+  const [isVerifyingBooking, setIsVerifyingBooking] = useState(false)
+  const [verificationError, setVerificationError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!isAdmin) {
@@ -86,7 +91,8 @@ export default function BookingsPage() {
           (booking) =>
             booking.name?.toLowerCase().includes(term) ||
             booking.email?.toLowerCase().includes(term) ||
-            booking.properties?.title?.toLowerCase().includes(term),
+            booking.properties?.title?.toLowerCase().includes(term) ||
+            booking.id?.toLowerCase().includes(term),
         )
       }
 
@@ -121,7 +127,7 @@ export default function BookingsPage() {
         toast({
           variant: "destructive",
           title: "Error",
-          description: "Failed to confirm booking. Please try again.",
+          description: result.error || "Failed to confirm booking. Please try again.",
         })
       }
     } catch (error) {
@@ -159,7 +165,7 @@ export default function BookingsPage() {
         toast({
           variant: "destructive",
           title: "Error",
-          description: "Failed to cancel booking. Please try again.",
+          description: result.error || "Failed to cancel booking. Please try again.",
         })
       }
     } catch (error) {
@@ -175,12 +181,52 @@ export default function BookingsPage() {
     }
   }
 
-  const handleViewBooking = (bookingId: string) => {
-    // Log the booking ID for debugging
-    console.log("Viewing booking with ID:", bookingId)
+  const handleViewBooking = async (bookingId: string) => {
+    try {
+      setIsVerifyingBooking(true)
+      setVerificationError(null)
 
-    // Navigate to the booking details page
-    router.push(`/admin/bookings/${encodeURIComponent(bookingId)}`)
+      // First verify the booking ID exists
+      console.log("Verifying booking ID:", bookingId)
+      const { exists, error } = await verifyBookingId(bookingId)
+
+      if (error) {
+        console.error("Error verifying booking ID:", error)
+        setVerificationError(error)
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: `Could not verify booking ID: ${error}`,
+        })
+        return
+      }
+
+      if (!exists) {
+        console.error("Booking ID does not exist:", bookingId)
+        setVerificationError("Booking ID does not exist")
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "This booking ID does not exist in the database.",
+        })
+        return
+      }
+
+      // If verification passes, navigate to the booking details page
+      const encodedId = encodeBookingId(bookingId)
+      console.log(`Navigating to booking details with ID: ${bookingId}, encoded: ${encodedId}`)
+      router.push(`/admin/bookings/${encodedId}`)
+    } catch (error) {
+      console.error("Error in handleViewBooking:", error)
+      setVerificationError("An unexpected error occurred")
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "An unexpected error occurred while trying to view the booking.",
+      })
+    } finally {
+      setIsVerifyingBooking(false)
+    }
   }
 
   const handleViewPropertyCalendar = (propertyId: string) => {
@@ -288,7 +334,7 @@ export default function BookingsPage() {
                 <tbody>
                   {filteredBookings.map((booking) => (
                     <tr key={booking.id} className="border-b">
-                      <td className="px-4 py-3 text-sm">{booking.id.substring(0, 8)}</td>
+                      <td className="px-4 py-3 text-sm">{formatBookingIdForDisplay(booking.id)}</td>
                       <td className="px-4 py-3 text-sm">
                         <div>{booking.properties?.title || "Unknown Property"}</div>
                         <div className="text-xs text-gray-500">{booking.properties?.location}</div>
@@ -309,14 +355,19 @@ export default function BookingsPage() {
                       </td>
                       <td className="px-4 py-3 text-sm">
                         <div className="flex flex-wrap gap-2">
-                          {/* Using a regular button with onClick handler for more control */}
                           <Button
                             variant="outline"
                             size="sm"
                             className="h-8 px-3"
                             onClick={() => handleViewBooking(booking.id)}
+                            disabled={isVerifyingBooking}
                           >
-                            <Eye className="h-4 w-4 mr-1" /> View
+                            {isVerifyingBooking ? (
+                              <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                            ) : (
+                              <Eye className="h-4 w-4 mr-1" />
+                            )}{" "}
+                            View
                           </Button>
 
                           {booking.status === "awaiting_confirmation" && booking.payment_proof && (
@@ -372,6 +423,16 @@ export default function BookingsPage() {
         <div className="text-center py-12 bg-gray-50 rounded-lg">
           <p className="text-gray-600 mb-2">No bookings found</p>
           <p className="text-sm text-gray-500">Try adjusting your filters or search criteria</p>
+        </div>
+      )}
+
+      {verificationError && (
+        <div className="mt-4 p-4 bg-red-50 border border-red-200 rounded-md">
+          <div className="flex items-center">
+            <AlertTriangle className="h-5 w-5 text-red-500 mr-2" />
+            <h3 className="font-medium text-red-700">Error Verifying Booking</h3>
+          </div>
+          <p className="mt-1 text-sm text-red-600">{verificationError}</p>
         </div>
       )}
 

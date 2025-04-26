@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { Loader2, AlertCircle, Clock, Calendar, MapPin } from "lucide-react"
 import { getBookingsByEmail } from "@/app/api/bookings/actions"
 import Link from "next/link"
+import { encodeBookingId } from "@/lib/booking-utils"
 
 export function BookingStatusCheck() {
   const [email, setEmail] = useState("")
@@ -112,39 +113,44 @@ export function BookingStatusCheck() {
               </Alert>
             ) : (
               <div className="space-y-4">
-                {bookings.map((booking) => (
-                  <div key={booking.id} className="border rounded-lg p-4">
-                    <div className="flex justify-between items-start mb-2">
-                      <h3 className="font-medium">{booking.properties?.title || "Property"}</h3>
-                      {getStatusBadge(booking.status)}
-                    </div>
-                    <div className="text-sm text-gray-500 space-y-1">
-                      <div className="flex items-center">
-                        <Calendar className="h-4 w-4 mr-2" />
-                        <span>
-                          {formatDate(booking.check_in)} - {formatDate(booking.check_out)}
-                        </span>
+                {bookings.map((booking) => {
+                  // Encode the booking ID for the URL
+                  const encodedId = encodeBookingId(booking.id)
+
+                  return (
+                    <div key={booking.id} className="border rounded-lg p-4">
+                      <div className="flex justify-between items-start mb-2">
+                        <h3 className="font-medium">{booking.properties?.title || "Property"}</h3>
+                        {getStatusBadge(booking.status)}
                       </div>
-                      {booking.properties?.location && (
+                      <div className="text-sm text-gray-500 space-y-1">
                         <div className="flex items-center">
-                          <MapPin className="h-4 w-4 mr-2" />
-                          <span>{booking.properties.location}</span>
+                          <Calendar className="h-4 w-4 mr-2" />
+                          <span>
+                            {formatDate(booking.check_in)} - {formatDate(booking.check_out)}
+                          </span>
                         </div>
-                      )}
-                      <div className="flex items-center">
-                        <Clock className="h-4 w-4 mr-2" />
-                        <span>Booked on {formatDate(booking.created_at)}</span>
+                        {booking.properties?.location && (
+                          <div className="flex items-center">
+                            <MapPin className="h-4 w-4 mr-2" />
+                            <span>{booking.properties.location}</span>
+                          </div>
+                        )}
+                        <div className="flex items-center">
+                          <Clock className="h-4 w-4 mr-2" />
+                          <span>Booked on {formatDate(booking.created_at)}</span>
+                        </div>
+                      </div>
+                      <div className="mt-3">
+                        <Link href={`/booking-status/${encodedId}`}>
+                          <Button variant="outline" size="sm" className="text-gouna-blue">
+                            View Details
+                          </Button>
+                        </Link>
                       </div>
                     </div>
-                    <div className="mt-3">
-                      <Link href={`/booking-status/${booking.id}`}>
-                        <Button variant="outline" size="sm" className="text-gouna-blue">
-                          View Details
-                        </Button>
-                      </Link>
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>
