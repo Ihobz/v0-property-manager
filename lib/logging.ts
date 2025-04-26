@@ -1,59 +1,140 @@
-import { createServerSupabaseClient } from "@/lib/supabase/server"
+import { createClient } from "@/lib/supabase/server"
 
-type LogLevel = "info" | "warning" | "error"
-type LogCategory = "booking" | "property" | "system" | "auth" | "payment" | "upload"
+// Define log levels
+export type LogLevel = "info" | "warning" | "error" | "debug"
 
+// Define log categories
+export type LogCategory = "system" | "booking" | "property" | "user" | "payment" | "upload"
+
+// Log a system event
 export async function logSystemEvent(
-  message: string,
-  level: LogLevel = "info",
-  category: LogCategory = "system",
-  details?: any,
+  level: LogLevel,
+  title: string,
+  details: string,
+  metadata: Record<string, any> = {},
 ) {
   try {
-    const supabase = createServerSupabaseClient()
+    const supabase = createClient()
 
-    const { error } = await supabase.from("system_logs").insert({
-      message,
+    await supabase.from("logs").insert({
       level,
-      category,
+      category: "system",
+      title,
       details,
-      timestamp: new Date().toISOString(),
+      metadata,
     })
-
-    if (error) {
-      console.error("Failed to log system event:", error)
-    }
   } catch (error) {
-    console.error("Error in logSystemEvent:", error)
+    console.error("Failed to log system event:", error)
   }
 }
 
-export async function logBookingEvent(message: string, level: LogLevel = "info", details?: any) {
-  return logSystemEvent(message, level, "booking", details)
+// Log a booking-related event
+export async function logBookingEvent(
+  level: LogLevel,
+  title: string,
+  details: string,
+  bookingId: string,
+  metadata: Record<string, any> = {},
+) {
+  try {
+    const supabase = createClient()
+
+    await supabase.from("logs").insert({
+      level,
+      category: "booking",
+      title,
+      details,
+      booking_id: bookingId,
+      metadata,
+    })
+  } catch (error) {
+    console.error("Failed to log booking event:", error)
+  }
 }
 
-export async function logPropertyEvent(message: string, level: LogLevel = "info", details?: any) {
-  return logSystemEvent(message, level, "property", details)
+// Log a property-related event
+export async function logPropertyEvent(
+  level: LogLevel,
+  title: string,
+  details: string,
+  propertyId: string,
+  metadata: Record<string, any> = {},
+) {
+  try {
+    const supabase = createClient()
+
+    await supabase.from("logs").insert({
+      level,
+      category: "property",
+      title,
+      details,
+      property_id: propertyId,
+      metadata,
+    })
+  } catch (error) {
+    console.error("Failed to log property event:", error)
+  }
 }
 
-export async function logAuthEvent(message: string, level: LogLevel = "info", details?: any) {
-  return logSystemEvent(message, level, "auth", details)
+// Log a user-related event
+export async function logUserEvent(
+  level: LogLevel,
+  title: string,
+  details: string,
+  userId: string,
+  metadata: Record<string, any> = {},
+) {
+  try {
+    const supabase = createClient()
+
+    await supabase.from("logs").insert({
+      level,
+      category: "user",
+      title,
+      details,
+      user_id: userId,
+      metadata,
+    })
+  } catch (error) {
+    console.error("Failed to log user event:", error)
+  }
 }
 
-export async function logPaymentEvent(message: string, level: LogLevel = "info", details?: any) {
-  return logSystemEvent(message, level, "payment", details)
+// Log an upload-related event
+export async function logUploadEvent(
+  level: LogLevel,
+  title: string,
+  details: string,
+  metadata: Record<string, any> = {},
+) {
+  try {
+    const supabase = createClient()
+
+    await supabase.from("logs").insert({
+      level,
+      category: "upload",
+      title,
+      details,
+      metadata,
+    })
+  } catch (error) {
+    console.error("Failed to log upload event:", error)
+  }
 }
 
-// Add the missing exports that are used in other files
-export async function logInfo(message: string, details?: any) {
-  return logSystemEvent(message, "info", "system", details)
+// Convenience functions for common log levels
+export async function logInfo(title: string, details: string, metadata: Record<string, any> = {}) {
+  return logSystemEvent("info", title, details, metadata)
 }
 
-export async function logError(message: string, details?: any) {
-  return logSystemEvent(message, "error", "system", details)
+export async function logError(title: string, details: string, metadata: Record<string, any> = {}) {
+  return logSystemEvent("error", title, details, metadata)
 }
 
-// Add a specific function for upload logs
-export async function logUploadEvent(message: string, level: LogLevel = "info", details?: any) {
-  return logSystemEvent(message, level, "upload", details)
+export async function logWarning(title: string, details: string, metadata: Record<string, any> = {}) {
+  return logSystemEvent("warning", title, details, metadata)
+}
+
+export async function logDebug(title: string, details: string, metadata: Record<string, any> = {}) {
+  return logSystemEvent("debug", title, details, metadata)
 }

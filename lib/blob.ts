@@ -1,61 +1,80 @@
-import { logError, logInfo } from "@/lib/logging"
+// Remove any imports from next/headers
+// import { cookies, headers } from 'next/headers'
 
-// Helper function for all uploads
-async function uploadFile(file: File, folder: string) {
+// Import server actions if needed
+// import { getRequestHeaders, getRequestCookies } from './server-actions'
+
+export async function uploadPaymentProof(file: File) {
   try {
-    logInfo("Upload attempt", `Uploading ${file.name} (${file.size} bytes) to ${folder}`)
-
-    // Validate file
-    if (!file || file.size === 0) {
-      throw new Error("Invalid or empty file")
-    }
-
-    // Create form data
     const formData = new FormData()
     formData.append("file", file)
-    formData.append("folder", folder)
+    formData.append("folder", "payment-proofs")
 
-    // Use the API route with better error handling
     const response = await fetch("/api/upload", {
       method: "POST",
       body: formData,
     })
 
-    // Check for non-OK responses
     if (!response.ok) {
-      let errorMessage = `Upload failed with status: ${response.status}`
-      try {
-        const errorData = await response.json()
-        errorMessage = errorData.error || errorMessage
-      } catch (e) {
-        // If we can't parse the error JSON, use the default message
-      }
-      throw new Error(errorMessage)
+      const errorData = await response.json()
+      console.error("Upload error:", errorData)
+      return { success: false, error: errorData.error || "Upload failed" }
     }
 
-    const result = await response.json()
-    logInfo("Upload success", `File uploaded successfully to ${result.url}`)
-
-    return { url: result.url, success: true }
+    const data = await response.json()
+    return { success: true, url: data.url, filename: data.filename }
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown upload error"
-    logError("Upload error", `Error uploading ${file.name}: ${errorMessage}`)
-    return {
-      url: null,
-      success: false,
-      error: errorMessage,
+    console.error("Upload error:", error)
+    return { success: false, error: error instanceof Error ? error.message : "Unknown error" }
+  }
+}
+
+export async function uploadTenantDocument(file: File) {
+  try {
+    const formData = new FormData()
+    formData.append("file", file)
+    formData.append("folder", "tenant-ids")
+
+    const response = await fetch("/api/upload", {
+      method: "POST",
+      body: formData,
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json()
+      console.error("Upload error:", errorData)
+      return { success: false, error: errorData.error || "Upload failed" }
     }
+
+    const data = await response.json()
+    return { success: true, url: data.url, filename: data.filename }
+  } catch (error) {
+    console.error("Upload error:", error)
+    return { success: false, error: error instanceof Error ? error.message : "Unknown error" }
   }
 }
 
 export async function uploadPropertyImage(file: File) {
-  return uploadFile(file, "property-images")
-}
+  try {
+    const formData = new FormData()
+    formData.append("file", file)
+    formData.append("folder", "properties")
 
-export async function uploadPaymentProof(file: File) {
-  return uploadFile(file, "payment-proofs")
-}
+    const response = await fetch("/api/upload", {
+      method: "POST",
+      body: formData,
+    })
 
-export async function uploadTenantDocument(file: File) {
-  return uploadFile(file, "tenant-documents")
+    if (!response.ok) {
+      const errorData = await response.json()
+      console.error("Upload error:", errorData)
+      return { success: false, error: errorData.error || "Upload failed" }
+    }
+
+    const data = await response.json()
+    return { success: true, url: data.url, filename: data.filename }
+  } catch (error) {
+    console.error("Upload error:", error)
+    return { success: false, error: error instanceof Error ? error.message : "Unknown error" }
+  }
 }
