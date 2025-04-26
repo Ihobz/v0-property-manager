@@ -9,7 +9,7 @@ export default function AboutPage() {
         <h1 className="text-3xl font-bold text-gouna-blue-dark mb-6">About El Gouna Rentals</h1>
 
         <div className="relative h-80 rounded-lg overflow-hidden mb-8">
-          <Image src="/placeholder.svg?height=600&width=1200" alt="El Gouna Scenery" fill className="object-cover" />
+          <Image src="/images/el-gouna-marina.png" alt="El Gouna Marina" fill className="object-cover" />
         </div>
 
         <div className="prose max-w-none">

@@ -89,3 +89,99 @@ export function generateBookingConfirmationEmail(booking: any, property: any) {
     `,
   }
 }
+
+export async function sendBookingConfirmationEmail(booking: any, property: any) {
+  const emailData = generateBookingConfirmationEmail(booking, property)
+  return sendEmail(emailData)
+}
+
+export function generateBookingStatusUpdateEmail(booking: any, property: any, newStatus: string) {
+  const siteUrl = config.public.SITE_URL || "http://localhost:3000"
+  const statusCheckUrl = `${siteUrl}/booking-status/${booking.id}`
+
+  let statusMessage = ""
+  let subject = ""
+
+  switch (newStatus) {
+    case "confirmed":
+      subject = "Your El Gouna Rental Booking is Confirmed"
+      statusMessage =
+        "We're pleased to inform you that your booking has been confirmed. We look forward to welcoming you to El Gouna!"
+      break
+    case "cancelled":
+      subject = "Your El Gouna Rental Booking has been Cancelled"
+      statusMessage =
+        "We regret to inform you that your booking has been cancelled. If you have any questions, please contact our support team."
+      break
+    case "completed":
+      subject = "Thank You for Staying with El Gouna Rentals"
+      statusMessage =
+        "Thank you for choosing El Gouna Rentals. We hope you enjoyed your stay and would love to welcome you back in the future!"
+      break
+    default:
+      subject = "Update on Your El Gouna Rental Booking"
+      statusMessage = `Your booking status has been updated to: ${newStatus.replace("_", " ").toUpperCase()}`
+  }
+
+  return {
+    to: booking.email,
+    subject,
+    html: `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+          .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+          .header { background-color: #1E88E5; color: white; padding: 20px; text-align: center; }
+          .content { padding: 20px; }
+          .footer { background-color: #f5f5f5; padding: 20px; text-align: center; font-size: 12px; color: #666; }
+          .button { display: inline-block; background-color: #E6A65D; color: white; padding: 12px 20px; text-decoration: none; border-radius: 4px; }
+          .details { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 4px; }
+          .property-name { font-size: 18px; font-weight: bold; }
+          .status { font-weight: bold; color: #1E88E5; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="header">
+            <h1>Booking Status Update</h1>
+          </div>
+          <div class="content">
+            <p>Dear ${booking.name},</p>
+            
+            <p>${statusMessage}</p>
+            
+            <div class="details">
+              <p class="property-name">${property.title}</p>
+              <p><strong>Check-in:</strong> ${new Date(booking.check_in).toLocaleDateString()}</p>
+              <p><strong>Check-out:</strong> ${new Date(booking.check_out).toLocaleDateString()}</p>
+              <p><strong>Guests:</strong> ${booking.guests}</p>
+              <p><strong>Current Status:</strong> <span class="status">${newStatus.replace("_", " ").toUpperCase()}</span></p>
+            </div>
+            
+            <p>You can check your booking status anytime using the link below:</p>
+            
+            <p style="text-align: center; margin: 30px 0;">
+              <a href="${statusCheckUrl}" class="button">Check Booking Status</a>
+            </p>
+            
+            <p>If you have any questions or need assistance, please don't hesitate to contact us at support@elgounarentals.com.</p>
+            
+            <p>Best regards,<br>El Gouna Rentals Team</p>
+          </div>
+          <div class="footer">
+            <p>© ${new Date().getFullYear()} El Gouna Rentals. All rights reserved.</p>
+            <p>El Gouna, Red Sea Governorate, Egypt</p>
+          </div>
+        </div>
+      </body>
+      </html>
+    `,
+  }
+}
+
+export async function sendBookingStatusUpdateEmail(booking: any, property: any, newStatus: string) {
+  const emailData = generateBookingStatusUpdateEmail(booking, property, newStatus)
+  return sendEmail(emailData)
+}

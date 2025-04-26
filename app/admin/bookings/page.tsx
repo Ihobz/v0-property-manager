@@ -8,7 +8,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { useAuth } from "@/lib/auth-provider"
-import { useBookings } from "@/hooks/use-bookings"
+import { getBookings } from "@/app/api/bookings/actions"
 import { Loader2, Search, ArrowLeft, CheckCircle, XCircle, Eye, AlertTriangle } from "lucide-react"
 import { updateBookingStatus } from "@/app/api/bookings/actions"
 import {
@@ -29,7 +29,9 @@ export default function BookingsPage() {
   const searchParams = useSearchParams()
   const statusFilter = searchParams.get("status") || "all"
 
-  const { bookings, isLoading } = useBookings()
+  const [bookings, setBookings] = useState<any[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [filteredBookings, setFilteredBookings] = useState<any[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [statusValue, setStatusValue] = useState(statusFilter)
@@ -46,6 +48,30 @@ export default function BookingsPage() {
     }
   }, [isAdmin, router])
 
+  // Fetch bookings directly in the component
+  useEffect(() => {
+    async function fetchBookings() {
+      try {
+        setIsLoading(true)
+        const { bookings: fetchedBookings, error: fetchError } = await getBookings()
+
+        if (fetchError) {
+          throw new Error(fetchError)
+        }
+
+        setBookings(fetchedBookings || [])
+        console.log("Fetched bookings:", fetchedBookings)
+      } catch (err) {
+        console.error("Error fetching bookings:", err)
+        setError(err instanceof Error ? err.message : "Failed to load bookings")
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    fetchBookings()
+  }, [])
+
   useEffect(() => {
     if (bookings) {
       let filtered = [...bookings]
@@ -60,9 +86,9 @@ export default function BookingsPage() {
         const term = searchTerm.toLowerCase()
         filtered = filtered.filter(
           (booking) =>
-            booking.name.toLowerCase().includes(term) ||
-            booking.email.toLowerCase().includes(term) ||
-            booking.properties?.title.toLowerCase().includes(term),
+            booking.name?.toLowerCase().includes(term) ||
+            booking.email?.toLowerCase().includes(term) ||
+            booking.properties?.title?.toLowerCase().includes(term),
         )
       }
 
@@ -86,8 +112,13 @@ export default function BookingsPage() {
           title: "Booking confirmed",
           description: "The booking has been confirmed successfully.",
         })
-        // Refresh the bookings data
-        router.refresh()
+
+        // Update the local state to reflect the change
+        setBookings((prevBookings) =>
+          prevBookings.map((booking) =>
+            booking.id === selectedBookingId ? { ...booking, status: "confirmed" } : booking,
+          ),
+        )
       } else {
         toast({
           variant: "destructive",
@@ -119,8 +150,13 @@ export default function BookingsPage() {
           title: "Booking cancelled",
           description: "The booking has been cancelled successfully.",
         })
-        // Refresh the bookings data
-        router.refresh()
+
+        // Update the local state to reflect the change
+        setBookings((prevBookings) =>
+          prevBookings.map((booking) =>
+            booking.id === selectedBookingId ? { ...booking, status: "cancelled" } : booking,
+          ),
+        )
       } else {
         toast({
           variant: "destructive",
@@ -149,6 +185,26 @@ export default function BookingsPage() {
     )
   }
 
+  if (error) {
+    return (
+      <div className="container py-12">
+        <Button variant="ghost" className="mb-6" onClick={() => router.push("/admin")}>
+          <ArrowLeft className="mr-2 h-4 w-4" /> Back to Dashboard
+        </Button>
+
+        <Card className="bg-red-50 border-red-200">
+          <CardContent className="p-6">
+            <h2 className="text-xl font-semibold text-red-700 mb-2">Error Loading Bookings</h2>
+            <p className="text-red-600">{error}</p>
+            <Button className="mt-4 bg-red-600 hover:bg-red-700 text-white" onClick={() => window.location.reload()}>
+              Try Again
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case "confirmed":
@@ -159,6 +215,8 @@ export default function BookingsPage() {
         return "bg-blue-100 text-blue-800"
       case "cancelled":
         return "bg-red-100 text-red-800"
+      case "blocked":
+        return "bg-gray-100 text-gray-800"
       default:
         return "bg-gray-100 text-gray-800"
     }
@@ -195,6 +253,7 @@ export default function BookingsPage() {
               <SelectItem value="confirmed">Confirmed</SelectItem>
               <SelectItem value="completed">Completed</SelectItem>
               <SelectItem value="cancelled">Cancelled</SelectItem>
+              <SelectItem value="blocked">Blocked</SelectItem>
             </SelectContent>
           </Select>
         </div>

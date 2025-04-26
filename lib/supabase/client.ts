@@ -14,3 +14,6 @@ export function getSupabaseBrowserClient() {
 
 // For backward compatibility
 export const createClient = getSupabaseBrowserClient
+
+// Add the missing export
+export const createClientSupabaseClient = getSupabaseBrowserClient

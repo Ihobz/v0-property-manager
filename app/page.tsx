@@ -20,7 +20,7 @@ export default async function Home() {
         <div className="absolute inset-0 bg-gouna-blue-dark/60 z-10" />
         <div
           className="absolute inset-0 bg-cover bg-center"
-          style={{ backgroundImage: "url('/placeholder.svg?height=1080&width=1920')" }}
+          style={{ backgroundImage: "url('/images/el-gouna-marina.png')" }}
         />
         <div className="container relative z-20 text-white">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-center">
@@ -133,12 +133,7 @@ export default async function Home() {
               </Button>
             </div>
             <div className="relative h-96 rounded-lg overflow-hidden">
-              <Image
-                src="/placeholder.svg?height=800&width=1200"
-                alt="El Gouna Scenery"
-                fill
-                className="object-cover"
-              />
+              <Image src="/images/el-gouna-lagoons.png" alt="El Gouna Lagoons" fill className="object-cover" />
             </div>
           </div>
         </div>

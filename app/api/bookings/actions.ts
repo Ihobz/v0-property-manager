@@ -2,7 +2,7 @@
 
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
-import { sendEmail, generateBookingConfirmationEmail } from "@/lib/email-service"
+import { sendBookingConfirmationEmail, sendBookingStatusUpdateEmail } from "@/lib/email-service"
 
 // Type for booking data
 type BookingData = {
@@ -18,44 +18,58 @@ type BookingData = {
 }
 
 // Create a new booking
-export async function createBooking(data: BookingData) {
+export async function createBooking(bookingData: any) {
   try {
     const supabase = createServerSupabaseClient()
 
-    // Set default status to "awaiting_confirmation"
-    const bookingData = {
-      ...data,
-      status: "awaiting_confirmation",
-    }
-
-    // Insert booking
-    const { data: booking, error } = await supabase.from("bookings").insert([bookingData]).select().single()
+    // Insert the booking
+    const { data, error } = await supabase
+      .from("bookings")
+      .insert({
+        ...bookingData,
+        status: "awaiting_payment", // Default status
+        created_at: new Date().toISOString(),
+      })
+      .select()
+      .single()
 
     if (error) {
       console.error("Error creating booking:", error)
-      return { success: false, error: error.message }
+      return { booking: null, error: error.message }
     }
 
     // Get property details for the email
-    const { data: property } = await supabase
+    const { data: property, error: propertyError } = await supabase
       .from("properties")
-      .select("title, location, images")
-      .eq("id", data.property_id)
+      .select("title, location")
+      .eq("id", bookingData.property_id)
       .single()
 
-    // Send confirmation email
-    if (property) {
-      const emailData = generateBookingConfirmationEmail(booking, property)
-      await sendEmail(emailData)
+    if (!propertyError && property) {
+      // Send confirmation email
+      try {
+        await sendBookingConfirmationEmail({
+          email: bookingData.email,
+          name: bookingData.name,
+          bookingId: data.id,
+          propertyTitle: property.title,
+          checkIn: bookingData.check_in,
+          checkOut: bookingData.check_out,
+          totalPrice: bookingData.total_price,
+        })
+      } catch (emailError) {
+        console.error("Error sending confirmation email:", emailError)
+        // Continue even if email fails
+      }
     }
 
     // Revalidate paths
-    revalidatePath("/admin/bookings")
+    revalidatePath(`/properties/${bookingData.property_id}`)
 
-    return { success: true, booking }
+    return { booking: data, error: null }
   } catch (error) {
     console.error("Error in createBooking:", error)
-    return { success: false, error: "Failed to create booking" }
+    return { booking: null, error: "Failed to create booking" }
   }
 }
 
@@ -64,9 +78,17 @@ export async function getBookings() {
   try {
     const supabase = createServerSupabaseClient()
 
-    const { data: bookings, error } = await supabase
+    const { data, error } = await supabase
       .from("bookings")
-      .select("*, properties(title, location, images)")
+      .select(`
+        *,
+        properties:property_id (
+          id,
+          title,
+          location,
+          price
+        )
+      `)
       .order("created_at", { ascending: false })
 
     if (error) {
@@ -74,7 +96,7 @@ export async function getBookings() {
       return { bookings: [], error: error.message }
     }
 
-    return { bookings, error: null }
+    return { bookings: data, error: null }
   } catch (error) {
     console.error("Error in getBookings:", error)
     return { bookings: [], error: "Failed to fetch bookings" }
@@ -86,9 +108,21 @@ export async function getBookingById(id: string) {
   try {
     const supabase = createServerSupabaseClient()
 
-    const { data: booking, error } = await supabase
+    const { data, error } = await supabase
       .from("bookings")
-      .select("*, properties(title, location, images, bedrooms, bathrooms, guests)")
+      .select(`
+        *,
+        properties:property_id (
+          id,
+          title,
+          location,
+          price,
+          images,
+          bedrooms,
+          bathrooms,
+          guests
+        )
+      `)
       .eq("id", id)
       .single()
 
@@ -97,7 +131,7 @@ export async function getBookingById(id: string) {
       return { booking: null, error: error.message }
     }
 
-    return { booking, error: null }
+    return { booking: data, error: null }
   } catch (error) {
     console.error("Error in getBookingById:", error)
     return { booking: null, error: "Failed to fetch booking" }
@@ -109,21 +143,30 @@ export async function getBookingsByEmail(email: string) {
   try {
     const supabase = createServerSupabaseClient()
 
-    const { data: bookings, error } = await supabase
+    const { data, error } = await supabase
       .from("bookings")
-      .select("*, properties(title, location, images)")
+      .select(`
+        id,
+        status,
+        check_in,
+        check_out,
+        created_at,
+        properties:property_id (
+          title
+        )
+      `)
       .eq("email", email)
       .order("created_at", { ascending: false })
 
     if (error) {
-      console.error("Error fetching bookings by email:", error)
+      console.error("Error checking bookings by email:", error)
       return { bookings: [], error: error.message }
     }
 
-    return { bookings, error: null }
+    return { bookings: data, error: null }
   } catch (error) {
-    console.error("Error in getBookingsByEmail:", error)
-    return { bookings: [], error: "Failed to fetch bookings by email" }
+    console.error("Error in checkBookingByEmail:", error)
+    return { bookings: [], error: "Failed to check bookings" }
   }
 }
 
@@ -132,133 +175,48 @@ export async function updateBookingStatus(id: string, status: string) {
   try {
     const supabase = createServerSupabaseClient()
 
-    const { error } = await supabase.from("bookings").update({ status }).eq("id", id)
+    // Get the booking first to have the email and property info
+    const { booking, error: fetchError } = await getBookingById(id)
+
+    if (fetchError || !booking) {
+      console.error("Error fetching booking for status update:", fetchError)
+      return { success: false, error: fetchError || "Booking not found" }
+    }
+
+    // Update the booking status
+    const { error } = await supabase
+      .from("bookings")
+      .update({
+        status,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id)
 
     if (error) {
       console.error("Error updating booking status:", error)
       return { success: false, error: error.message }
     }
 
-    // If status is confirmed, send confirmation email to guest
-    if (status === "confirmed") {
-      // Get booking details with property info
-      const { data: booking } = await supabase
-        .from("bookings")
-        .select("*, properties(title, location, images)")
-        .eq("id", id)
-        .single()
-
-      if (booking) {
-        // Send confirmation email
-        const emailData = {
-          to: booking.email,
-          subject: "Your El Gouna Rentals Booking is Confirmed!",
-          html: `
-            <!DOCTYPE html>
-            <html>
-            <head>
-              <style>
-                body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-                .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                .header { background-color: #1E88E5; color: white; padding: 20px; text-align: center; }
-                .content { padding: 20px; }
-                .footer { background-color: #f5f5f5; padding: 20px; text-align: center; font-size: 12px; color: #666; }
-                .button { display: inline-block; background-color: #4CAF50; color: white; padding: 12px 20px; text-decoration: none; border-radius: 4px; }
-                .details { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 4px; }
-                .property-name { font-size: 18px; font-weight: bold; }
-              </style>
-            </head>
-            <body>
-              <div class="container">
-                <div class="header">
-                  <h1>Booking Confirmed!</h1>
-                </div>
-                <div class="content">
-                  <p>Dear ${booking.name},</p>
-                  <p>Great news! Your booking at El Gouna Rentals has been confirmed.</p>
-                  
-                  <div class="details">
-                    <p class="property-name">${booking.properties?.title || "Your Property"}</p>
-                    <p><strong>Check-in:</strong> ${new Date(booking.check_in).toLocaleDateString()}</p>
-                    <p><strong>Check-out:</strong> ${new Date(booking.check_out).toLocaleDateString()}</p>
-                    <p><strong>Guests:</strong> ${booking.guests}</p>
-                    <p><strong>Total Price:</strong> $${booking.total_price}</p>
-                  </div>
-                  
-                  <p>We're looking forward to welcoming you to El Gouna. You'll receive check-in instructions closer to your arrival date.</p>
-                  
-                  <p>If you have any questions or need assistance, please don't hesitate to contact us at support@elgounarentals.com.</p>
-                  
-                  <p>Best regards,<br>El Gouna Rentals Team</p>
-                </div>
-                <div class="footer">
-                  <p>© ${new Date().getFullYear()} El Gouna Rentals. All rights reserved.</p>
-                  <p>El Gouna, Red Sea Governorate, Egypt</p>
-                </div>
-              </div>
-            </body>
-            </html>
-          `,
-        }
-        await sendEmail(emailData)
-      }
-    }
-
-    // If status is cancelled, send cancellation email to guest
-    if (status === "cancelled") {
-      // Get booking details
-      const { data: booking } = await supabase
-        .from("bookings")
-        .select("name, email, check_in, check_out, properties(title)")
-        .eq("id", id)
-        .single()
-
-      if (booking) {
-        // Send cancellation email
-        const emailData = {
-          to: booking.email,
-          subject: "Your El Gouna Rentals Booking has been Cancelled",
-          html: `
-            <!DOCTYPE html>
-            <html>
-            <head>
-              <style>
-                body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-                .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-                .header { background-color: #1E88E5; color: white; padding: 20px; text-align: center; }
-                .content { padding: 20px; }
-                .footer { background-color: #f5f5f5; padding: 20px; text-align: center; font-size: 12px; color: #666; }
-              </style>
-            </head>
-            <body>
-              <div class="container">
-                <div class="header">
-                  <h1>Booking Cancelled</h1>
-                </div>
-                <div class="content">
-                  <p>Dear ${booking.name},</p>
-                  <p>We regret to inform you that your booking at ${booking.properties?.title || "our property"} for ${new Date(booking.check_in).toLocaleDateString()} to ${new Date(booking.check_out).toLocaleDateString()} has been cancelled.</p>
-                  
-                  <p>If you have any questions about this cancellation or would like to make a new booking, please contact us at support@elgounarentals.com.</p>
-                  
-                  <p>Best regards,<br>El Gouna Rentals Team</p>
-                </div>
-                <div class="footer">
-                  <p>© ${new Date().getFullYear()} El Gouna Rentals. All rights reserved.</p>
-                  <p>El Gouna, Red Sea Governorate, Egypt</p>
-                </div>
-              </div>
-            </body>
-            </html>
-          `,
-        }
-        await sendEmail(emailData)
-      }
+    // Send email notification
+    try {
+      await sendBookingStatusUpdateEmail({
+        email: booking.email,
+        name: booking.name,
+        bookingId: booking.id,
+        propertyTitle: booking.properties.title,
+        checkIn: booking.check_in,
+        checkOut: booking.check_out,
+        status,
+      })
+    } catch (emailError) {
+      console.error("Error sending status update email:", emailError)
+      // Continue even if email fails
     }
 
     // Revalidate paths
-    revalidatePath("/admin/bookings")
+    revalidatePath(`/admin/bookings`)
     revalidatePath(`/admin/bookings/${id}`)
+    revalidatePath(`/booking-status/${id}`)
 
     return { success: true }
   } catch (error) {

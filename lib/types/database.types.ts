@@ -86,6 +86,38 @@ export interface Database {
           },
         ]
       }
+      blocked_dates: {
+        Row: {
+          id: string
+          property_id: string
+          date: string
+          reason: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          property_id: string
+          date: string
+          reason?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          property_id?: string
+          date?: string
+          reason?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "blocked_dates_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       properties: {
         Row: {
           address: string
