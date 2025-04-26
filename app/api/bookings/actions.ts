@@ -103,10 +103,20 @@ export async function getBookings() {
   }
 }
 
-// Get booking by ID
+// Get booking by ID with improved error handling
 export async function getBookingById(id: string) {
   try {
+    console.log(`Server Action: Fetching booking with ID: "${id}"`)
+
+    if (!id) {
+      console.error("Server Action: No booking ID provided")
+      return { booking: null, error: "No booking ID provided" }
+    }
+
     const supabase = createServerSupabaseClient()
+
+    // Log the exact query we're about to make
+    console.log(`Server Action: Executing query for booking ID: "${id}"`)
 
     const { data, error } = await supabase
       .from("bookings")
@@ -127,13 +137,19 @@ export async function getBookingById(id: string) {
       .single()
 
     if (error) {
-      console.error("Error fetching booking:", error)
+      console.error(`Server Action: Error fetching booking with ID "${id}":`, error)
       return { booking: null, error: error.message }
     }
 
+    if (!data) {
+      console.error(`Server Action: No booking found with ID "${id}"`)
+      return { booking: null, error: "Booking not found" }
+    }
+
+    console.log(`Server Action: Successfully retrieved booking with ID "${id}"`)
     return { booking: data, error: null }
   } catch (error) {
-    console.error("Error in getBookingById:", error)
+    console.error("Server Action: Unexpected error:", error)
     return { booking: null, error: "Failed to fetch booking" }
   }
 }

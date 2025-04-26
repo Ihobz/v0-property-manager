@@ -23,10 +23,11 @@ import {
   Bath,
   Loader2,
   AlertTriangle,
+  Info,
 } from "lucide-react"
 import { useAuth } from "@/lib/auth-provider"
 import { toast } from "@/components/ui/use-toast"
-import { updateBookingStatus } from "@/app/api/bookings/actions"
+import { updateBookingStatus, getBookingById } from "@/app/api/bookings/actions"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -37,34 +38,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-
-// Function to fetch a single booking by ID with improved error handling
-async function getBookingById(id: string) {
-  try {
-    console.log(`Fetching booking with ID: ${id}`)
-
-    const response = await fetch(`/api/bookings/${id}`, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      cache: "no-store", // Ensure we always get fresh data
-    })
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      console.error(`Error response: ${response.status}`, errorData)
-      throw new Error(`Error ${response.status}: ${errorData.error || response.statusText}`)
-    }
-
-    const data = await response.json()
-    console.log("Booking data received:", data)
-    return { booking: data.booking, error: null }
-  } catch (error) {
-    console.error("Failed to fetch booking:", error)
-    return { booking: null, error: error instanceof Error ? error.message : "Failed to fetch booking" }
-  }
-}
 
 export default function BookingDetailsPage() {
   const params = useParams()
@@ -78,6 +51,7 @@ export default function BookingDetailsPage() {
   const [cleaningFee, setCleaningFee] = useState(0)
   const [confirmationMessage, setConfirmationMessage] = useState("")
   const [retryCount, setRetryCount] = useState(0)
+  const [debugInfo, setDebugInfo] = useState<any>(null)
 
   // State for confirmation dialogs
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false)
@@ -98,7 +72,9 @@ export default function BookingDetailsPage() {
     setError(null)
 
     try {
-      console.log(`Loading booking data for ID: ${bookingId} (Attempt ${retryCount + 1})`)
+      console.log(`Loading booking data for ID: "${bookingId}" (Attempt ${retryCount + 1})`)
+
+      // Use the server action to get booking data
       const { booking: fetchedBooking, error: fetchError } = await getBookingById(bookingId)
 
       if (fetchError) {
@@ -114,9 +90,28 @@ export default function BookingDetailsPage() {
       setProperty(fetchedBooking.properties)
       setCleaningFee(fetchedBooking.cleaning_fee || 0)
       setRetryCount(0) // Reset retry count on success
+
+      // Set debug info
+      setDebugInfo({
+        bookingId: bookingId,
+        bookingIdType: typeof bookingId,
+        bookingIdLength: bookingId.length,
+        fetchedId: fetchedBooking.id,
+        fetchedIdType: typeof fetchedBooking.id,
+        fetchedIdLength: fetchedBooking.id.length,
+        match: bookingId === fetchedBooking.id,
+      })
     } catch (err) {
       console.error("Error loading booking:", err)
       setError(err instanceof Error ? err.message : "Failed to load booking details")
+
+      // Set debug info for error case
+      setDebugInfo({
+        bookingId: bookingId,
+        bookingIdType: typeof bookingId,
+        bookingIdLength: bookingId.length,
+        error: err instanceof Error ? err.message : String(err),
+      })
     } finally {
       setIsLoading(false)
     }
@@ -210,6 +205,7 @@ export default function BookingDetailsPage() {
       <div className="container py-12 flex flex-col items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-gouna-blue mb-4" />
         <p className="text-gray-600">Loading booking details...</p>
+        <p className="text-sm text-gray-500 mt-2">Booking ID: {bookingId}</p>
       </div>
     )
   }
@@ -232,6 +228,15 @@ export default function BookingDetailsPage() {
               <h2 className="text-xl font-semibold text-red-700">Error Loading Booking</h2>
             </div>
             <p className="text-red-600 mb-4">{error || "Booking not found"}</p>
+
+            {/* Debug information */}
+            <div className="bg-white p-4 rounded-md mb-4 border border-red-200">
+              <h3 className="font-medium mb-2 flex items-center">
+                <Info className="h-4 w-4 mr-1" /> Debug Information
+              </h3>
+              <pre className="text-xs bg-gray-100 p-2 rounded overflow-auto">{JSON.stringify(debugInfo, null, 2)}</pre>
+            </div>
+
             <div className="flex gap-4">
               <Button className="bg-red-600 hover:bg-red-700 text-white" onClick={handleRetry}>
                 Try Again
@@ -288,6 +293,7 @@ export default function BookingDetailsPage() {
               <TabsTrigger value="details">Booking Details</TabsTrigger>
               <TabsTrigger value="payment">Payment</TabsTrigger>
               <TabsTrigger value="documents">Documents</TabsTrigger>
+              <TabsTrigger value="debug">Debug Info</TabsTrigger>
             </TabsList>
 
             <TabsContent value="details">
@@ -299,7 +305,7 @@ export default function BookingDetailsPage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                       <h3 className="text-sm font-medium text-gray-500 mb-1">Property</h3>
-                      <p className="font-semibold">{property?.name || "Unknown Property"}</p>
+                      <p className="font-semibold">{property?.title || "Unknown Property"}</p>
                       <p className="text-sm text-gray-600">{property?.location}</p>
                     </div>
 
@@ -426,26 +432,29 @@ export default function BookingDetailsPage() {
                   <CardTitle className="text-gouna-blue-dark">Tenant Documents</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {booking.tenant_ids && booking.tenant_ids.length > 0 ? (
+                  {booking.tenant_id &&
+                  (Array.isArray(booking.tenant_id) ? booking.tenant_id.length > 0 : booking.tenant_id) ? (
                     <div className="space-y-6">
-                      {booking.tenant_ids.map((id: string, index: number) => (
-                        <div key={index}>
-                          <h3 className="text-sm font-medium text-gray-500 mb-3">Tenant ID #{index + 1}</h3>
-                          <div className="relative h-80 rounded-md overflow-hidden border">
-                            <Image
-                              src={id || "/placeholder.svg"}
-                              alt={`Tenant ID ${index + 1}`}
-                              fill
-                              className="object-contain"
-                            />
+                      {(Array.isArray(booking.tenant_id) ? booking.tenant_id : [booking.tenant_id]).map(
+                        (id: string, index: number) => (
+                          <div key={index}>
+                            <h3 className="text-sm font-medium text-gray-500 mb-3">Tenant ID #{index + 1}</h3>
+                            <div className="relative h-80 rounded-md overflow-hidden border">
+                              <Image
+                                src={id || "/placeholder.svg"}
+                                alt={`Tenant ID ${index + 1}`}
+                                fill
+                                className="object-contain"
+                              />
+                            </div>
+                            <div className="mt-4 flex justify-end">
+                              <Button variant="outline" className="flex items-center">
+                                <Download className="h-4 w-4 mr-2" /> Download
+                              </Button>
+                            </div>
                           </div>
-                          <div className="mt-4 flex justify-end">
-                            <Button variant="outline" className="flex items-center">
-                              <Download className="h-4 w-4 mr-2" /> Download
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
+                        ),
+                      )}
                     </div>
                   ) : (
                     <div className="text-center py-8">
@@ -454,6 +463,34 @@ export default function BookingDetailsPage() {
                       <p className="text-gray-500">The guest has not uploaded any identification documents yet.</p>
                     </div>
                   )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="debug">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-gouna-blue-dark">Debug Information</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="bg-gray-50 p-4 rounded-md">
+                    <h3 className="font-medium mb-2">Booking ID Details</h3>
+                    <pre className="text-xs bg-white p-3 rounded border overflow-auto">
+                      {JSON.stringify(
+                        {
+                          bookingId: bookingId,
+                          bookingIdType: typeof bookingId,
+                          bookingIdLength: bookingId.length,
+                          fetchedId: booking.id,
+                          fetchedIdType: typeof booking.id,
+                          fetchedIdLength: booking.id.length,
+                          match: bookingId === booking.id,
+                        },
+                        null,
+                        2,
+                      )}
+                    </pre>
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>
@@ -515,12 +552,12 @@ export default function BookingDetailsPage() {
               <div className="relative h-48 rounded-md overflow-hidden mb-4">
                 <Image
                   src={property?.images?.[0] || "/placeholder.svg"}
-                  alt={property?.name || "Property"}
+                  alt={property?.title || "Property"}
                   fill
                   className="object-cover"
                 />
               </div>
-              <h3 className="font-semibold mb-1">{property?.name || "Unknown Property"}</h3>
+              <h3 className="font-semibold mb-1">{property?.title || "Unknown Property"}</h3>
               <p className="text-sm text-gray-600 mb-4">{property?.location}</p>
               <div className="grid grid-cols-3 gap-2 text-sm text-gray-600">
                 <div className="flex flex-col items-center p-2 bg-gray-50 rounded">

@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -176,6 +175,14 @@ export default function BookingsPage() {
     }
   }
 
+  const handleViewBooking = (bookingId: string) => {
+    // Log the booking ID for debugging
+    console.log("Viewing booking with ID:", bookingId)
+
+    // Navigate to the booking details page
+    router.push(`/admin/bookings/${encodeURIComponent(bookingId)}`)
+  }
+
   const handleViewPropertyCalendar = (propertyId: string) => {
     router.push(`/admin/properties/calendar/${propertyId}`)
   }
@@ -302,12 +309,15 @@ export default function BookingsPage() {
                       </td>
                       <td className="px-4 py-3 text-sm">
                         <div className="flex flex-wrap gap-2">
-                          {/* Using Link component for reliable navigation */}
-                          <Link href={`/admin/bookings/${booking.id}`} passHref>
-                            <Button variant="outline" size="sm" className="h-8 px-3">
-                              <Eye className="h-4 w-4 mr-1" /> View
-                            </Button>
-                          </Link>
+                          {/* Using a regular button with onClick handler for more control */}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 px-3"
+                            onClick={() => handleViewBooking(booking.id)}
+                          >
+                            <Eye className="h-4 w-4 mr-1" /> View
+                          </Button>
 
                           {booking.status === "awaiting_confirmation" && booking.payment_proof && (
                             <Button
