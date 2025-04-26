@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Calendar, Check } from "lucide-react"
+import { Calendar } from "lucide-react"
 import { createBooking } from "@/app/api/bookings/actions"
 import { checkPropertyAvailability } from "@/app/api/availability/actions"
 import { usePropertyAvailability } from "@/hooks/use-availability"
@@ -33,9 +33,7 @@ export default function BookingForm({ property }: BookingFormProps) {
   const [message, setMessage] = useState("")
 
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [bookingSubmitted, setBookingSubmitted] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [booking, setBooking] = useState<any>(null)
 
   // Calculate total price
   const calculateTotalPrice = () => {
@@ -118,12 +116,11 @@ export default function BookingForm({ property }: BookingFormProps) {
         throw new Error("Failed to create booking")
       }
 
-      setBooking(result.booking)
-      setBookingSubmitted(true)
+      // Redirect to upload page
+      router.push(`/upload/${result.booking.id}`)
     } catch (err: any) {
       setError(err.message || "An error occurred")
       console.error("Error creating booking:", err)
-    } finally {
       setIsSubmitting(false)
     }
   }
@@ -162,132 +159,109 @@ export default function BookingForm({ property }: BookingFormProps) {
 
   return (
     <div>
-      {bookingSubmitted ? (
-        <div className="text-center space-y-4">
-          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
-            <Check className="h-8 w-8 text-green-600" />
-          </div>
-          <h3 className="text-xl font-semibold text-gouna-blue-dark">Booking Request Sent!</h3>
-          <p className="text-gray-600">
-            Thank you for your booking request. We'll get back to you shortly with confirmation and payment
-            instructions.
-          </p>
-          {booking && (
-            <div className="mt-6">
-              <Button
-                className="bg-gouna-blue hover:bg-gouna-blue-dark text-white"
-                onClick={() => router.push(`/upload/${booking.id}`)}
-              >
-                Upload Documents
-              </Button>
+      <form onSubmit={handleBookingSubmit} className="space-y-4">
+        {error && <div className="bg-red-50 text-red-700 p-3 rounded-md mb-4">{error}</div>}
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <Label htmlFor="check-in">Check In</Label>
+            <div className="relative">
+              <Input
+                type="date"
+                id="check-in"
+                className="pr-10"
+                value={checkIn}
+                onChange={handleCheckInChange}
+                min={today}
+                required
+              />
+              <Calendar className="h-4 w-4 absolute top-3 right-3 text-gray-500" />
             </div>
-          )}
+          </div>
+          <div>
+            <Label htmlFor="check-out">Check Out</Label>
+            <div className="relative">
+              <Input
+                type="date"
+                id="check-out"
+                className="pr-10"
+                value={checkOut}
+                onChange={handleCheckOutChange}
+                min={checkIn ? format(addDays(new Date(checkIn), 1), "yyyy-MM-dd") : today}
+                disabled={!checkIn}
+                required
+              />
+              <Calendar className="h-4 w-4 absolute top-3 right-3 text-gray-500" />
+            </div>
+          </div>
         </div>
-      ) : (
-        <form onSubmit={handleBookingSubmit} className="space-y-4">
-          {error && <div className="bg-red-50 text-red-700 p-3 rounded-md mb-4">{error}</div>}
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="check-in">Check In</Label>
-              <div className="relative">
-                <Input
-                  type="date"
-                  id="check-in"
-                  className="pr-10"
-                  value={checkIn}
-                  onChange={handleCheckInChange}
-                  min={today}
-                  required
-                />
-                <Calendar className="h-4 w-4 absolute top-3 right-3 text-gray-500" />
-              </div>
+        <div>
+          <Label htmlFor="guests">Guests</Label>
+          <Select value={guests} onValueChange={setGuests}>
+            <SelectTrigger id="guests">
+              <SelectValue placeholder="Select" />
+            </SelectTrigger>
+            <SelectContent>
+              {[...Array(property.guests)].map((_, i) => (
+                <SelectItem key={i} value={(i + 1).toString()}>
+                  {i + 1} {i === 0 ? "Guest" : "Guests"}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {checkIn && checkOut && isDateRangeValid() && (
+          <div className="bg-gray-50 p-4 rounded-md space-y-2">
+            <div className="flex justify-between">
+              <span>Price per night</span>
+              <span>${property.price}</span>
             </div>
-            <div>
-              <Label htmlFor="check-out">Check Out</Label>
-              <div className="relative">
-                <Input
-                  type="date"
-                  id="check-out"
-                  className="pr-10"
-                  value={checkOut}
-                  onChange={handleCheckOutChange}
-                  min={checkIn ? format(addDays(new Date(checkIn), 1), "yyyy-MM-dd") : today}
-                  disabled={!checkIn}
-                  required
-                />
-                <Calendar className="h-4 w-4 absolute top-3 right-3 text-gray-500" />
-              </div>
+            <div className="flex justify-between">
+              <span>Nights</span>
+              <span>{differenceInDays(new Date(checkOut), new Date(checkIn))}</span>
             </div>
-          </div>
-
-          <div>
-            <Label htmlFor="guests">Guests</Label>
-            <Select value={guests} onValueChange={setGuests}>
-              <SelectTrigger id="guests">
-                <SelectValue placeholder="Select" />
-              </SelectTrigger>
-              <SelectContent>
-                {[...Array(property.guests)].map((_, i) => (
-                  <SelectItem key={i} value={(i + 1).toString()}>
-                    {i + 1} {i === 0 ? "Guest" : "Guests"}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {checkIn && checkOut && isDateRangeValid() && (
-            <div className="bg-gray-50 p-4 rounded-md space-y-2">
-              <div className="flex justify-between">
-                <span>Price per night</span>
-                <span>${property.price}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Nights</span>
-                <span>{differenceInDays(new Date(checkOut), new Date(checkIn))}</span>
-              </div>
-              <div className="flex justify-between font-semibold">
-                <span>Total</span>
-                <span>${totalPrice}</span>
-              </div>
-              <p className="text-xs text-gray-500 mt-2">* Cleaning fee may be added by the property owner</p>
+            <div className="flex justify-between font-semibold">
+              <span>Total</span>
+              <span>${totalPrice}</span>
             </div>
-          )}
-
-          <div>
-            <Label htmlFor="name">Full Name</Label>
-            <Input type="text" id="name" value={name} onChange={(e) => setName(e.target.value)} required />
+            <p className="text-xs text-gray-500 mt-2">* Cleaning fee may be added by the property owner</p>
           </div>
+        )}
 
-          <div>
-            <Label htmlFor="email">Email</Label>
-            <Input type="email" id="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-          </div>
+        <div>
+          <Label htmlFor="name">Full Name</Label>
+          <Input type="text" id="name" value={name} onChange={(e) => setName(e.target.value)} required />
+        </div>
 
-          <div>
-            <Label htmlFor="phone">Phone</Label>
-            <Input type="tel" id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} required />
-          </div>
+        <div>
+          <Label htmlFor="email">Email</Label>
+          <Input type="email" id="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+        </div>
 
-          <div>
-            <Label htmlFor="message">Message (Optional)</Label>
-            <Textarea id="message" value={message} onChange={(e) => setMessage(e.target.value)} />
-          </div>
+        <div>
+          <Label htmlFor="phone">Phone</Label>
+          <Input type="tel" id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} required />
+        </div>
 
-          <Button
-            type="submit"
-            className="w-full bg-gouna-sand hover:bg-gouna-sand-dark text-white"
-            disabled={isSubmitting || !isDateRangeValid()}
-          >
-            {isSubmitting ? "Processing..." : "Request Booking"}
-          </Button>
+        <div>
+          <Label htmlFor="message">Message (Optional)</Label>
+          <Textarea id="message" value={message} onChange={(e) => setMessage(e.target.value)} />
+        </div>
 
-          <p className="text-xs text-gray-500 text-center">
-            By clicking "Request Booking", you agree to our terms and conditions.
-          </p>
-        </form>
-      )}
+        <Button
+          type="submit"
+          className="w-full bg-gouna-sand hover:bg-gouna-sand-dark text-white"
+          disabled={isSubmitting || !isDateRangeValid()}
+        >
+          {isSubmitting ? "Processing..." : "Request Booking"}
+        </Button>
+
+        <p className="text-xs text-gray-500 text-center">
+          By clicking "Request Booking", you agree to our terms and conditions.
+        </p>
+      </form>
     </div>
   )
 }

@@ -2,6 +2,7 @@
 
 import { createServerSupabaseClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
+import { sendEmail, generateBookingConfirmationEmail } from "@/lib/email-service"
 
 // Type for booking data
 type BookingData = {
@@ -33,6 +34,19 @@ export async function createBooking(data: BookingData) {
     if (error) {
       console.error("Error creating booking:", error)
       return { success: false, error: error.message }
+    }
+
+    // Get property details for the email
+    const { data: property } = await supabase
+      .from("properties")
+      .select("title, location, images")
+      .eq("id", data.property_id)
+      .single()
+
+    // Send confirmation email
+    if (property) {
+      const emailData = generateBookingConfirmationEmail(booking, property)
+      await sendEmail(emailData)
     }
 
     // Revalidate paths
@@ -90,6 +104,29 @@ export async function getBookingById(id: string) {
   }
 }
 
+// Get bookings by email
+export async function getBookingsByEmail(email: string) {
+  try {
+    const supabase = createServerSupabaseClient()
+
+    const { data: bookings, error } = await supabase
+      .from("bookings")
+      .select("*, properties(title, location, images)")
+      .eq("email", email)
+      .order("created_at", { ascending: false })
+
+    if (error) {
+      console.error("Error fetching bookings by email:", error)
+      return { bookings: [], error: error.message }
+    }
+
+    return { bookings, error: null }
+  } catch (error) {
+    console.error("Error in getBookingsByEmail:", error)
+    return { bookings: [], error: "Failed to fetch bookings by email" }
+  }
+}
+
 // Update booking status
 export async function updateBookingStatus(id: string, status: string) {
   try {
@@ -100,6 +137,123 @@ export async function updateBookingStatus(id: string, status: string) {
     if (error) {
       console.error("Error updating booking status:", error)
       return { success: false, error: error.message }
+    }
+
+    // If status is confirmed, send confirmation email to guest
+    if (status === "confirmed") {
+      // Get booking details with property info
+      const { data: booking } = await supabase
+        .from("bookings")
+        .select("*, properties(title, location, images)")
+        .eq("id", id)
+        .single()
+
+      if (booking) {
+        // Send confirmation email
+        const emailData = {
+          to: booking.email,
+          subject: "Your El Gouna Rentals Booking is Confirmed!",
+          html: `
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <style>
+                body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                .header { background-color: #1E88E5; color: white; padding: 20px; text-align: center; }
+                .content { padding: 20px; }
+                .footer { background-color: #f5f5f5; padding: 20px; text-align: center; font-size: 12px; color: #666; }
+                .button { display: inline-block; background-color: #4CAF50; color: white; padding: 12px 20px; text-decoration: none; border-radius: 4px; }
+                .details { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 4px; }
+                .property-name { font-size: 18px; font-weight: bold; }
+              </style>
+            </head>
+            <body>
+              <div class="container">
+                <div class="header">
+                  <h1>Booking Confirmed!</h1>
+                </div>
+                <div class="content">
+                  <p>Dear ${booking.name},</p>
+                  <p>Great news! Your booking at El Gouna Rentals has been confirmed.</p>
+                  
+                  <div class="details">
+                    <p class="property-name">${booking.properties?.title || "Your Property"}</p>
+                    <p><strong>Check-in:</strong> ${new Date(booking.check_in).toLocaleDateString()}</p>
+                    <p><strong>Check-out:</strong> ${new Date(booking.check_out).toLocaleDateString()}</p>
+                    <p><strong>Guests:</strong> ${booking.guests}</p>
+                    <p><strong>Total Price:</strong> $${booking.total_price}</p>
+                  </div>
+                  
+                  <p>We're looking forward to welcoming you to El Gouna. You'll receive check-in instructions closer to your arrival date.</p>
+                  
+                  <p>If you have any questions or need assistance, please don't hesitate to contact us at support@elgounarentals.com.</p>
+                  
+                  <p>Best regards,<br>El Gouna Rentals Team</p>
+                </div>
+                <div class="footer">
+                  <p>© ${new Date().getFullYear()} El Gouna Rentals. All rights reserved.</p>
+                  <p>El Gouna, Red Sea Governorate, Egypt</p>
+                </div>
+              </div>
+            </body>
+            </html>
+          `,
+        }
+        await sendEmail(emailData)
+      }
+    }
+
+    // If status is cancelled, send cancellation email to guest
+    if (status === "cancelled") {
+      // Get booking details
+      const { data: booking } = await supabase
+        .from("bookings")
+        .select("name, email, check_in, check_out, properties(title)")
+        .eq("id", id)
+        .single()
+
+      if (booking) {
+        // Send cancellation email
+        const emailData = {
+          to: booking.email,
+          subject: "Your El Gouna Rentals Booking has been Cancelled",
+          html: `
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <style>
+                body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                .header { background-color: #1E88E5; color: white; padding: 20px; text-align: center; }
+                .content { padding: 20px; }
+                .footer { background-color: #f5f5f5; padding: 20px; text-align: center; font-size: 12px; color: #666; }
+              </style>
+            </head>
+            <body>
+              <div class="container">
+                <div class="header">
+                  <h1>Booking Cancelled</h1>
+                </div>
+                <div class="content">
+                  <p>Dear ${booking.name},</p>
+                  <p>We regret to inform you that your booking at ${booking.properties?.title || "our property"} for ${new Date(booking.check_in).toLocaleDateString()} to ${new Date(booking.check_out).toLocaleDateString()} has been cancelled.</p>
+                  
+                  <p>If you have any questions about this cancellation or would like to make a new booking, please contact us at support@elgounarentals.com.</p>
+                  
+                  <p>Best regards,<br>El Gouna Rentals Team</p>
+                </div>
+                <div class="footer">
+                  <p>© ${new Date().getFullYear()} El Gouna Rentals. All rights reserved.</p>
+                  <p>El Gouna, Red Sea Governorate, Egypt</p>
+                </div>
+              </div>
+            </body>
+            </html>
+          `,
+        }
+        await sendEmail(emailData)
+      }
     }
 
     // Revalidate paths

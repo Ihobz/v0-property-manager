@@ -9,7 +9,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Input } from "@/components/ui/input"
 import { useAuth } from "@/lib/auth-provider"
 import { useBookings } from "@/hooks/use-bookings"
-import { Loader2, Search, ArrowLeft } from "lucide-react"
+import { Loader2, Search, ArrowLeft, CheckCircle, XCircle, Eye, AlertTriangle } from "lucide-react"
+import { updateBookingStatus } from "@/app/api/bookings/actions"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { toast } from "@/components/ui/use-toast"
 
 export default function BookingsPage() {
   const { isAdmin } = useAuth()
@@ -21,6 +33,12 @@ export default function BookingsPage() {
   const [filteredBookings, setFilteredBookings] = useState<any[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [statusValue, setStatusValue] = useState(statusFilter)
+
+  // State for confirmation dialogs
+  const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false)
+  const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false)
+  const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null)
+  const [isProcessing, setIsProcessing] = useState(false)
 
   useEffect(() => {
     if (!isAdmin) {
@@ -55,6 +73,72 @@ export default function BookingsPage() {
   const handleStatusChange = (value: string) => {
     setStatusValue(value)
     router.push(`/admin/bookings${value !== "all" ? `?status=${value}` : ""}`)
+  }
+
+  const handleConfirmBooking = async () => {
+    if (!selectedBookingId) return
+
+    setIsProcessing(true)
+    try {
+      const result = await updateBookingStatus(selectedBookingId, "confirmed")
+      if (result.success) {
+        toast({
+          title: "Booking confirmed",
+          description: "The booking has been confirmed successfully.",
+        })
+        // Refresh the bookings data
+        router.refresh()
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to confirm booking. Please try again.",
+        })
+      }
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "An unexpected error occurred.",
+      })
+    } finally {
+      setIsProcessing(false)
+      setIsConfirmDialogOpen(false)
+      setSelectedBookingId(null)
+    }
+  }
+
+  const handleCancelBooking = async () => {
+    if (!selectedBookingId) return
+
+    setIsProcessing(true)
+    try {
+      const result = await updateBookingStatus(selectedBookingId, "cancelled")
+      if (result.success) {
+        toast({
+          title: "Booking cancelled",
+          description: "The booking has been cancelled successfully.",
+        })
+        // Refresh the bookings data
+        router.refresh()
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to cancel booking. Please try again.",
+        })
+      }
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "An unexpected error occurred.",
+      })
+    } finally {
+      setIsProcessing(false)
+      setIsCancelDialogOpen(false)
+      setSelectedBookingId(null)
+    }
   }
 
   if (isLoading) {
@@ -152,9 +236,60 @@ export default function BookingsPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-sm">
-                        <Button asChild variant="outline" size="sm">
-                          <Link href={`/admin/bookings/${booking.id}`}>View</Link>
-                        </Button>
+                        <div className="flex space-x-2">
+                          <Button asChild variant="outline" size="sm" className="h-8 w-8 p-0">
+                            <Link href={`/admin/bookings/${booking.id}`}>
+                              <span className="sr-only">View</span>
+                              <Eye className="h-4 w-4" />
+                            </Link>
+                          </Button>
+
+                          {booking.status === "awaiting_confirmation" && booking.payment_proof && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 w-8 p-0 text-green-600 border-green-600 hover:bg-green-50"
+                              onClick={() => {
+                                setSelectedBookingId(booking.id)
+                                setIsConfirmDialogOpen(true)
+                              }}
+                            >
+                              <span className="sr-only">Confirm</span>
+                              <CheckCircle className="h-4 w-4" />
+                            </Button>
+                          )}
+
+                          {(booking.status === "awaiting_confirmation" ||
+                            booking.status === "awaiting_payment" ||
+                            booking.status === "confirmed") && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 w-8 p-0 text-red-600 border-red-600 hover:bg-red-50"
+                              onClick={() => {
+                                setSelectedBookingId(booking.id)
+                                setIsCancelDialogOpen(true)
+                              }}
+                            >
+                              <span className="sr-only">Cancel</span>
+                              <XCircle className="h-4 w-4" />
+                            </Button>
+                          )}
+
+                          {booking.status === "awaiting_payment" && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 w-8 p-0 text-amber-600 border-amber-600 hover:bg-amber-50"
+                              asChild
+                            >
+                              <Link href={`/admin/bookings/${booking.id}`}>
+                                <span className="sr-only">Payment Status</span>
+                                <AlertTriangle className="h-4 w-4" />
+                              </Link>
+                            </Button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -169,6 +304,63 @@ export default function BookingsPage() {
           <p className="text-sm text-gray-500">Try adjusting your filters or search criteria</p>
         </div>
       )}
+
+      {/* Confirm Booking Dialog */}
+      <AlertDialog open={isConfirmDialogOpen} onOpenChange={setIsConfirmDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Booking</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to confirm this booking? This will notify the guest that their booking has been
+              confirmed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isProcessing}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmBooking}
+              disabled={isProcessing}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {isProcessing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...
+                </>
+              ) : (
+                "Confirm Booking"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Cancel Booking Dialog */}
+      <AlertDialog open={isCancelDialogOpen} onOpenChange={setIsCancelDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel Booking</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to cancel this booking? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isProcessing}>No, keep it</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleCancelBooking}
+              disabled={isProcessing}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {isProcessing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...
+                </>
+              ) : (
+                "Yes, cancel booking"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
