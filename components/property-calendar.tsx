@@ -114,12 +114,7 @@ export function PropertyCalendar({ propertyId }: PropertyCalendarProps) {
       setIsUnblockDialogOpen(true)
     } else {
       // Check if the date is already booked
-      const isBooked = bookings.some((booking) =>
-        isWithinInterval(date, {
-          start: new Date(booking.check_in),
-          end: addDays(new Date(booking.check_out), -1),
-        }),
-      )
+      const isBooked = bookings.some((booking) => isDateInBookingRange(date, booking))
 
       if (!isBooked) {
         setSelectedDate(date)
@@ -132,6 +127,21 @@ export function PropertyCalendar({ propertyId }: PropertyCalendarProps) {
         })
       }
     }
+  }
+
+  // Helper function to check if a date is within a booking range (including check-in date)
+  const isDateInBookingRange = (date: Date, booking: Booking) => {
+    const checkIn = new Date(booking.check_in)
+    const checkOut = new Date(booking.check_out)
+
+    // Include the check-in date in the range
+    return (
+      isSameDay(date, checkIn) ||
+      isWithinInterval(date, {
+        start: checkIn,
+        end: addDays(checkOut, -1),
+      })
+    )
   }
 
   const handleBlockDate = async () => {
@@ -223,12 +233,9 @@ export function PropertyCalendar({ propertyId }: PropertyCalendarProps) {
     const isBlocked = blockedDates.some((bd) => isSameDay(new Date(bd.date), date))
     if (isBlocked) return "bg-gray-300 text-gray-800 hover:bg-gray-400"
 
-    // Check if date is in bookings
+    // Check if date is in bookings (including check-in date)
     for (const booking of bookings) {
-      const checkIn = new Date(booking.check_in)
-      const checkOut = new Date(booking.check_out)
-
-      if (isWithinInterval(date, { start: checkIn, end: addDays(checkOut, -1) })) {
+      if (isDateInBookingRange(date, booking)) {
         switch (booking.status) {
           case "confirmed":
             return "bg-green-100 text-green-800 hover:bg-green-200"
@@ -246,12 +253,9 @@ export function PropertyCalendar({ propertyId }: PropertyCalendarProps) {
   }
 
   const getDateTooltip = (date: Date) => {
-    // Check if date is in bookings
+    // Check if date is in bookings (including check-in date)
     for (const booking of bookings) {
-      const checkIn = new Date(booking.check_in)
-      const checkOut = new Date(booking.check_out)
-
-      if (isWithinInterval(date, { start: checkIn, end: addDays(checkOut, -1) })) {
+      if (isDateInBookingRange(date, booking)) {
         return `${booking.name || "Guest"} - ${booking.status.replace("_", " ")}`
       }
     }
@@ -363,23 +367,13 @@ export function PropertyCalendar({ propertyId }: PropertyCalendarProps) {
             const className = getDayClassName(date)
             const tooltip = getDateTooltip(date)
             const isBlocked = blockedDates.some((bd) => isSameDay(new Date(bd.date), date))
-            const isBooked = bookings.some((booking) =>
-              isWithinInterval(date, {
-                start: new Date(booking.check_in),
-                end: addDays(new Date(booking.check_out), -1),
-              }),
-            )
+            const isBooked = bookings.some((booking) => isDateInBookingRange(date, booking))
 
             let statusIndicator = null
             if (isBlocked) {
               statusIndicator = <div className="absolute bottom-0 left-0 right-0 h-1 bg-gray-500"></div>
             } else if (isBooked) {
-              const booking = bookings.find((b) =>
-                isWithinInterval(date, {
-                  start: new Date(b.check_in),
-                  end: addDays(new Date(b.check_out), -1),
-                }),
-              )
+              const booking = bookings.find((b) => isDateInBookingRange(date, b))
 
               if (booking) {
                 const color =

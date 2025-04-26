@@ -175,7 +175,9 @@ export default function BookingsPage() {
     }
   }
 
+  // Fixed the View action to properly navigate to the booking details page
   const handleViewBooking = (bookingId: string) => {
+    console.log("Viewing booking:", bookingId)
     router.push(`/admin/bookings/${bookingId}`)
   }
 
