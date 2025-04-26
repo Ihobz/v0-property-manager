@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { DebugUpload } from "@/components/debug-upload"
 import { EnvironmentStatus } from "@/components/env-status"
-import { AuthDebug } from "@/components/auth-debug"
 import { ArrowLeft } from "lucide-react"
 import config from "@/lib/config"
 
@@ -57,8 +56,7 @@ export default function DebugPage() {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-        <AuthDebug />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <DebugUpload />
       </div>
     </div>

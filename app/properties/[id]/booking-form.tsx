@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -36,17 +36,6 @@ export default function BookingForm({ property }: BookingFormProps) {
   const [bookingSubmitted, setBookingSubmitted] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [booking, setBooking] = useState<any>(null)
-
-  useEffect(() => {
-    // Automatically redirect to upload page after 3 seconds when booking is submitted
-    if (bookingSubmitted && booking) {
-      const timer = setTimeout(() => {
-        router.push(`/upload/${booking.id}`)
-      }, 3000)
-
-      return () => clearTimeout(timer)
-    }
-  }, [bookingSubmitted, booking, router])
 
   // Calculate total price
   const calculateTotalPrice = () => {
@@ -180,16 +169,19 @@ export default function BookingForm({ property }: BookingFormProps) {
           </div>
           <h3 className="text-xl font-semibold text-gouna-blue-dark">Booking Request Sent!</h3>
           <p className="text-gray-600">
-            Thank you for your booking request. You'll be redirected to upload your documents.
+            Thank you for your booking request. We'll get back to you shortly with confirmation and payment
+            instructions.
           </p>
-          <div className="mt-6">
-            <Button
-              className="bg-gouna-blue hover:bg-gouna-blue-dark text-white"
-              onClick={() => router.push(`/upload/${booking.id}`)}
-            >
-              Upload Documents
-            </Button>
-          </div>
+          {booking && (
+            <div className="mt-6">
+              <Button
+                className="bg-gouna-blue hover:bg-gouna-blue-dark text-white"
+                onClick={() => router.push(`/upload/${booking.id}`)}
+              >
+                Upload Documents
+              </Button>
+            </div>
+          )}
         </div>
       ) : (
         <form onSubmit={handleBookingSubmit} className="space-y-4">

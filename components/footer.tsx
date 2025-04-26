@@ -51,13 +51,8 @@ export default function Footer() {
           </div>
         </div>
 
-        <div className="border-t border-gray-200 mt-8 pt-8 text-center">
-          <p className="text-gray-600">&copy; {currentYear} El Gouna Rentals. All rights reserved.</p>
-          <div className="mt-2 text-xs text-gray-400">
-            <Link href="/admin/login" className="hover:text-gray-600">
-              Admin
-            </Link>
-          </div>
+        <div className="border-t border-gray-200 mt-8 pt-8 text-center text-gray-600">
+          <p>&copy; {currentYear} El Gouna Rentals. All rights reserved.</p>
         </div>
       </div>
     </footer>

@@ -76,10 +76,14 @@ export default function Navbar() {
               </Link>
             )}
 
-            {user && isAdmin && (
+            {user ? (
               <Button variant="outline" onClick={signOut}>
                 Sign Out
               </Button>
+            ) : (
+              <Link href="/admin/login">
+                <Button variant="outline">Login</Button>
+              </Link>
             )}
           </nav>
 
@@ -141,10 +145,16 @@ export default function Navbar() {
               </Link>
             )}
 
-            {user && isAdmin && (
+            {user ? (
               <Button variant="outline" onClick={signOut} className="w-full">
                 Sign Out
               </Button>
+            ) : (
+              <Link href="/admin/login" className="block" onClick={closeMenu}>
+                <Button variant="outline" className="w-full">
+                  Login
+                </Button>
+              </Link>
             )}
           </nav>
         )}

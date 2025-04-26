@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { getProperties, getPropertyById } from "@/app/api/properties/actions"
 
-export function useProperties(shouldFetch = true) {
+export function useProperties() {
   const [properties, setProperties] = useState<any[] | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<any>(null)
@@ -27,15 +27,13 @@ export function useProperties(shouldFetch = true) {
       }
     }
 
-    if (shouldFetch) {
-      loadProperties()
-    }
-  }, [shouldFetch])
+    loadProperties()
+  }, [])
 
   return { properties, isLoading, error }
 }
 
-export function useProperty(id: string, shouldFetch = true) {
+export function useProperty(id: string) {
   const [property, setProperty] = useState<any | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<any>(null)
@@ -59,10 +57,10 @@ export function useProperty(id: string, shouldFetch = true) {
       }
     }
 
-    if (id && shouldFetch) {
+    if (id) {
       loadProperty()
     }
-  }, [id, shouldFetch])
+  }, [id])
 
   return { property, isLoading, error }
 }
