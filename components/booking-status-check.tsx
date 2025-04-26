@@ -52,6 +52,8 @@ export function BookingStatusCheck() {
         return <Badge className="bg-green-500">Confirmed</Badge>
       case "awaiting_confirmation":
         return <Badge className="bg-amber-500">Awaiting Confirmation</Badge>
+      case "awaiting_payment":
+        return <Badge className="bg-yellow-500">Awaiting Payment</Badge>
       case "cancelled":
         return <Badge className="bg-red-500">Cancelled</Badge>
       case "completed":
@@ -116,11 +118,13 @@ export function BookingStatusCheck() {
                 {bookings.map((booking) => {
                   // Encode the booking ID for the URL
                   const encodedId = encodeBookingId(booking.id)
+                  // Get property name (handle both title and name fields)
+                  const propertyName = booking.properties?.name || booking.properties?.title || "Property"
 
                   return (
                     <div key={booking.id} className="border rounded-lg p-4">
                       <div className="flex justify-between items-start mb-2">
-                        <h3 className="font-medium">{booking.properties?.title || "Property"}</h3>
+                        <h3 className="font-medium">{propertyName}</h3>
                         {getStatusBadge(booking.status)}
                       </div>
                       <div className="text-sm text-gray-500 space-y-1">

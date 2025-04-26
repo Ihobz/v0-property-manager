@@ -15,9 +15,11 @@ export default function PropertyCalendarPage({ params }: { params: { id: string 
   const [property, setProperty] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [isClient, setIsClient] = useState(false)
 
   useEffect(() => {
-    if (!isAdmin) {
+    setIsClient(true)
+    if (isAdmin === false) {
       router.push("/admin/login")
     }
   }, [isAdmin, router])
@@ -43,13 +45,13 @@ export default function PropertyCalendarPage({ params }: { params: { id: string 
       }
     }
 
-    if (params.id) {
+    if (params.id && isAdmin !== false && isClient) {
       fetchProperty()
     }
-  }, [params.id])
+  }, [params.id, isAdmin, isClient])
 
-  if (!isAdmin) {
-    return null // We'll redirect in the useEffect
+  if (!isClient || isAdmin === false) {
+    return null
   }
 
   if (isLoading) {
@@ -88,7 +90,7 @@ export default function PropertyCalendarPage({ params }: { params: { id: string 
 
       <Card className="mb-8">
         <CardHeader className="pb-2">
-          <CardTitle className="text-2xl font-bold text-gouna-blue-dark">Calendar for {property.title}</CardTitle>
+          <CardTitle className="text-2xl font-bold text-gouna-blue-dark">Calendar for {property.name}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="text-sm text-gray-500 mb-4">

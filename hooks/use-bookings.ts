@@ -7,22 +7,39 @@ export function useBookings() {
   const [bookings, setBookings] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [debugInfo, setDebugInfo] = useState<any>(null)
 
   useEffect(() => {
     async function fetchBookings() {
       try {
         setIsLoading(true)
-        const { bookings: fetchedBookings, error: fetchError } = await getBookings()
+        console.log("useBookings: Fetching bookings...")
+
+        const { bookings: fetchedBookings, error: fetchError, details } = await getBookings()
 
         if (fetchError) {
+          console.error("useBookings: Error from getBookings:", fetchError, details)
+          setDebugInfo({ error: fetchError, details })
           throw new Error(fetchError)
         }
 
+        console.log("useBookings: Fetched bookings:", fetchedBookings)
+        setDebugInfo({
+          bookingsCount: fetchedBookings?.length || 0,
+          firstBooking: fetchedBookings?.[0]
+            ? {
+                id: fetchedBookings[0].id,
+                status: fetchedBookings[0].status,
+                property: fetchedBookings[0].properties?.name || "Unknown",
+              }
+            : null,
+        })
+
         setBookings(fetchedBookings || [])
-        console.log("Fetched bookings:", fetchedBookings)
       } catch (err) {
-        console.error("Error fetching bookings:", err)
+        console.error("useBookings: Error fetching bookings:", err)
         setError(err instanceof Error ? err.message : "Failed to load bookings")
+        setDebugInfo({ catchError: err instanceof Error ? err.message : String(err) })
       } finally {
         setIsLoading(false)
       }
@@ -31,5 +48,5 @@ export function useBookings() {
     fetchBookings()
   }, [])
 
-  return { bookings, isLoading, error }
+  return { bookings, isLoading, error, debugInfo }
 }

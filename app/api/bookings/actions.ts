@@ -58,9 +58,9 @@ export async function createBooking(bookingData: any) {
     await logBookingEvent("Booking created successfully", "info", { bookingId: data.id })
 
     // Get property details for the email
-    const { data: property, error: propertyError } = await supabase
+    const { data: property, propertyError } = await supabase
       .from("properties")
-      .select("title, location")
+      .select("name, location")
       .eq("id", bookingData.property_id)
       .single()
 
@@ -78,7 +78,7 @@ export async function createBooking(bookingData: any) {
           email: bookingData.email,
           name: bookingData.name,
           bookingId: data.id,
-          propertyTitle: property.title,
+          propertyTitle: property.name,
           checkIn: bookingData.check_in,
           checkOut: bookingData.check_out,
           totalPrice: bookingData.total_price,
@@ -109,7 +109,11 @@ export async function createBooking(bookingData: any) {
 // Get all bookings
 export async function getBookings() {
   try {
+    console.log("Server Action: getBookings - Starting to fetch bookings")
     const supabase = createServerSupabaseClient()
+
+    // Log the query we're about to make
+    console.log("Server Action: getBookings - Executing query to fetch all bookings")
 
     const { data, error } = await supabase
       .from("bookings")
@@ -117,7 +121,7 @@ export async function getBookings() {
         *,
         properties:property_id (
           id,
-          title,
+          name,
           location,
           price
         )
@@ -125,16 +129,37 @@ export async function getBookings() {
       .order("created_at", { ascending: false })
 
     if (error) {
+      console.error("Server Action: getBookings - Error fetching bookings:", error)
       await logBookingEvent("Error fetching all bookings", "error", { error })
-      console.error("Error fetching bookings:", error)
       return { bookings: [], error: error.message }
     }
 
-    return { bookings: data, error: null }
+    console.log(`Server Action: getBookings - Successfully fetched ${data?.length || 0} bookings`)
+
+    // If no bookings found, check if the table exists and has data
+    if (!data || data.length === 0) {
+      console.log("Server Action: getBookings - No bookings found, checking if table exists")
+
+      // Check if the bookings table exists and has data
+      const { count, error: countError } = await supabase.from("bookings").select("*", { count: "exact", head: true })
+
+      if (countError) {
+        console.error("Server Action: getBookings - Error checking bookings table:", countError)
+        return { bookings: [], error: "Error checking bookings table: " + countError.message }
+      }
+
+      console.log(`Server Action: getBookings - Bookings table has ${count} records`)
+    }
+
+    return { bookings: data || [], error: null }
   } catch (error) {
+    console.error("Server Action: getBookings - Unexpected error:", error)
     await logBookingEvent("Unexpected error in getBookings", "error", { error })
-    console.error("Error in getBookings:", error)
-    return { bookings: [], error: "Failed to fetch bookings" }
+    return {
+      bookings: [],
+      error: "Failed to fetch bookings",
+      details: error instanceof Error ? error.message : String(error),
+    }
   }
 }
 
@@ -163,7 +188,7 @@ export async function getBookingById(id: string) {
         *,
         properties:property_id (
           id,
-          title,
+          name,
           location,
           price,
           images,
@@ -223,7 +248,7 @@ export async function getBookingsByEmail(email: string) {
         check_out,
         created_at,
         properties:property_id (
-          title,
+          name,
           location
         )
       `)
@@ -290,7 +315,7 @@ export async function updateBookingStatus(id: string, status: string) {
         email: booking.email,
         name: booking.name,
         bookingId: booking.id,
-        propertyTitle: booking.properties.title,
+        propertyTitle: booking.properties.name,
         checkIn: booking.check_in,
         checkOut: booking.check_out,
         status,
@@ -533,6 +558,73 @@ export async function verifyBookingId(bookingId: string) {
     console.error("Unexpected error verifying booking ID:", error)
     return {
       exists: false,
+      error: error instanceof Error ? error.message : "An unexpected error occurred",
+    }
+  }
+}
+
+/**
+ * Creates a test booking for debugging purposes
+ */
+export async function createTestBooking() {
+  try {
+    console.log("Creating test booking...")
+    await logBookingEvent("Creating test booking", "info")
+
+    const supabase = createServerSupabaseClient()
+
+    // First, get a property to associate with the booking
+    const { data: properties, propertyError } = await supabase.from("properties").select("id, name, price").limit(1)
+
+    if (propertyError || !properties || properties.length === 0) {
+      console.error("Error fetching property for test booking:", propertyError)
+      return {
+        success: false,
+        error: propertyError ? propertyError.message : "No properties found",
+      }
+    }
+
+    const property = properties[0]
+
+    // Create a test booking
+    const testBooking = {
+      property_id: property.id,
+      name: "Test User",
+      email: "test@example.com",
+      phone: "+1234567890",
+      check_in: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0], // 7 days from now
+      check_out: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split("T")[0], // 14 days from now
+      guests: 2,
+      base_price: property.price * 7, // 7 days
+      total_price: property.price * 7,
+      status: "awaiting_payment",
+      created_at: new Date().toISOString(),
+    }
+
+    const { data, error } = await supabase.from("bookings").insert(testBooking).select().single()
+
+    if (error) {
+      console.error("Error creating test booking:", error)
+      await logBookingEvent("Error creating test booking", "error", { error })
+      return { success: false, error: error.message }
+    }
+
+    console.log("Test booking created successfully:", data)
+    await logBookingEvent("Test booking created successfully", "info", { bookingId: data.id })
+
+    // Revalidate paths
+    revalidatePath("/admin/bookings")
+
+    return {
+      success: true,
+      booking: data,
+      message: `Test booking created successfully for property "${property.name}"`,
+    }
+  } catch (error) {
+    console.error("Unexpected error creating test booking:", error)
+    await logBookingEvent("Unexpected error creating test booking", "error", { error })
+    return {
+      success: false,
       error: error instanceof Error ? error.message : "An unexpected error occurred",
     }
   }

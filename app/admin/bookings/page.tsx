@@ -45,6 +45,9 @@ export default function BookingsPage() {
   const [isVerifyingBooking, setIsVerifyingBooking] = useState(false)
   const [verificationError, setVerificationError] = useState<string | null>(null)
 
+  // Debug state
+  const [debugInfo, setDebugInfo] = useState<any>(null)
+
   useEffect(() => {
     if (!isAdmin) {
       router.push("/admin/login")
@@ -56,17 +59,22 @@ export default function BookingsPage() {
     async function fetchBookings() {
       try {
         setIsLoading(true)
+        console.log("Fetching bookings...")
         const { bookings: fetchedBookings, error: fetchError } = await getBookings()
 
         if (fetchError) {
+          console.error("Error from getBookings:", fetchError)
+          setDebugInfo({ error: fetchError })
           throw new Error(fetchError)
         }
 
-        setBookings(fetchedBookings || [])
         console.log("Fetched bookings:", fetchedBookings)
+        setDebugInfo({ bookingsCount: fetchedBookings?.length || 0, bookings: fetchedBookings })
+        setBookings(fetchedBookings || [])
       } catch (err) {
         console.error("Error fetching bookings:", err)
         setError(err instanceof Error ? err.message : "Failed to load bookings")
+        setDebugInfo({ catchError: err instanceof Error ? err.message : String(err) })
       } finally {
         setIsLoading(false)
       }
@@ -255,6 +263,13 @@ export default function BookingsPage() {
             <Button className="mt-4 bg-red-600 hover:bg-red-700 text-white" onClick={() => window.location.reload()}>
               Try Again
             </Button>
+
+            {debugInfo && (
+              <div className="mt-4 p-4 bg-gray-100 rounded-md">
+                <h3 className="font-medium mb-2">Debug Information:</h3>
+                <pre className="text-xs overflow-auto max-h-40">{JSON.stringify(debugInfo, null, 2)}</pre>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -311,6 +326,20 @@ export default function BookingsPage() {
         </div>
       </div>
 
+      {/* Debug info */}
+      {debugInfo && (
+        <Card className="mb-4">
+          <CardContent className="p-4">
+            <details>
+              <summary className="cursor-pointer font-medium text-sm text-gray-600">Debug Information</summary>
+              <div className="mt-2 p-2 bg-gray-50 rounded-md">
+                <pre className="text-xs overflow-auto max-h-40">{JSON.stringify(debugInfo, null, 2)}</pre>
+              </div>
+            </details>
+          </CardContent>
+        </Card>
+      )}
+
       {filteredBookings.length > 0 ? (
         <Card>
           <CardContent className="p-0">
@@ -332,7 +361,7 @@ export default function BookingsPage() {
                     <tr key={booking.id} className="border-b">
                       <td className="px-4 py-3 text-sm">{formatBookingIdForDisplay(booking.id)}</td>
                       <td className="px-4 py-3 text-sm">
-                        <div>{booking.properties?.title || "Unknown Property"}</div>
+                        <div>{booking.properties?.title || booking.properties?.name || "Unknown Property"}</div>
                         <div className="text-xs text-gray-500">{booking.properties?.location}</div>
                       </td>
                       <td className="px-4 py-3 text-sm">
@@ -413,6 +442,14 @@ export default function BookingsPage() {
         <div className="text-center py-12 bg-gray-50 rounded-lg">
           <p className="text-gray-600 mb-2">No bookings found</p>
           <p className="text-sm text-gray-500">Try adjusting your filters or search criteria</p>
+
+          {/* Add a button to create a test booking */}
+          <Button
+            className="mt-4 bg-gouna-blue hover:bg-gouna-blue-dark text-white"
+            onClick={() => router.push("/admin/debug/create-test-booking")}
+          >
+            Create Test Booking
+          </Button>
         </div>
       )}
 

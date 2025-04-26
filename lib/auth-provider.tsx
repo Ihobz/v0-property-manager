@@ -3,64 +3,96 @@
 import type React from "react"
 
 import { createContext, useContext, useEffect, useState } from "react"
-import type { Session, User } from "@supabase/supabase-js"
-import { getSupabaseBrowserClient } from "@/lib/supabase/client"
+import { createClientSupabaseClient } from "@/lib/supabase/client"
 
 type AuthContextType = {
-  user: User | null
-  session: Session | null
-  isLoading: boolean
-  isAdmin: boolean
+  isAdmin: boolean | null
+  signIn: (email: string, password: string) => Promise<{ success: boolean; error?: string }>
   signOut: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType>({
-  user: null,
-  session: null,
-  isLoading: true,
-  isAdmin: false,
+  isAdmin: null,
+  signIn: async () => ({ success: false }),
   signOut: async () => {},
 })
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
-  const [session, setSession] = useState<Session | null>(null)
+  const [isAdmin, setIsAdmin] = useState<boolean | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
-  const supabase = getSupabaseBrowserClient()
-
-  // Update the useEffect hook to better handle authentication state
   useEffect(() => {
-    // Check for active session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
-      setUser(session?.user ?? null)
-      setIsLoading(false)
-    })
+    const checkSession = async () => {
+      try {
+        const supabase = createClientSupabaseClient()
 
-    // Listen for auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session)
-      setUser(session?.user ?? null)
-      setIsLoading(false)
-    })
+        // Check if user is authenticated
+        const {
+          data: { session },
+        } = await supabase.auth.getSession()
 
-    return () => {
-      subscription.unsubscribe()
+        if (session) {
+          // Check if user is an admin
+          const { data: admin } = await supabase.from("admins").select("*").eq("email", session.user.email).single()
+
+          setIsAdmin(!!admin)
+        } else {
+          setIsAdmin(false)
+        }
+      } catch (error) {
+        console.error("Error checking auth session:", error)
+        setIsAdmin(false)
+      } finally {
+        setIsLoading(false)
+      }
     }
-  }, [supabase.auth])
 
-  // Check if user is admin
-  const isAdmin =
-    !!user?.email && (user.email === "admin@elgounarentals.com" || user.email === "monzer@elgounarentals.com")
+    checkSession()
+  }, [])
 
-  const signOut = async () => {
-    await supabase.auth.signOut()
+  const signIn = async (email: string, password: string) => {
+    try {
+      const supabase = createClientSupabaseClient()
+
+      // Sign in with email and password
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
+
+      if (error) {
+        return { success: false, error: error.message }
+      }
+      return { success: false, error: error.message }
+
+      // Check if user is an admin
+      const { data: admin } = await supabase.from("admins").select("*").eq("email", email).single()
+
+      if (!admin) {
+        // Sign out if not an admin
+        await supabase.auth.signOut()
+        return { success: false, error: "Not authorized as admin" }
+      }
+
+      setIsAdmin(true)
+      return { success: true }
+    } catch (error) {
+      console.error("Error signing in:", error)
+      return { success: false, error: "An unexpected error occurred" }
+    }
   }
 
-  return <AuthContext.Provider value={{ user, session, isLoading, isAdmin, signOut }}>{children}</AuthContext.Provider>
+  const signOut = async () => {
+    try {
+      const supabase = createClientSupabaseClient()
+      await supabase.auth.signOut()
+      setIsAdmin(false)
+    } catch (error) {
+      console.error("Error signing out:", error)
+    }
+  }
+
+  return <AuthContext.Provider value={{ isAdmin, signIn, signOut }}>{children}</AuthContext.Provider>
 }
 
 export const useAuth = () => useContext(AuthContext)
