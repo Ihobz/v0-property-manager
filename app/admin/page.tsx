@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { useAuth } from "@/lib/auth-provider"
@@ -67,19 +66,20 @@ export default function AdminDashboard() {
   // Count bookings by status
   const bookingCounts = {
     total: bookings?.length || 0,
-    pending: bookings?.filter((b) => b.status === "awaiting_confirmation").length || 0,
-    confirmed: bookings?.filter((b) => b.status === "confirmed").length || 0,
+    awaiting_confirmation: bookings?.filter((b) => b.status === "awaiting_confirmation").length || 0,
     awaiting_payment: bookings?.filter((b) => b.status === "awaiting_payment").length || 0,
+    confirmed: bookings?.filter((b) => b.status === "confirmed").length || 0,
+    cancelled: bookings?.filter((b) => b.status === "cancelled").length || 0,
   }
 
   // Handle view booking click
   const handleViewBooking = (bookingId: string) => {
-    router.push(`/admin/bookings/${bookingId}`)
+    window.location.href = `/admin/bookings/${bookingId}`
   }
 
   // Handle view property calendar click
   const handleViewPropertyCalendar = (propertyId: string) => {
-    router.push(`/admin/properties/calendar/${propertyId}`)
+    window.location.href = `/admin/properties/calendar/${propertyId}`
   }
 
   const handleConfirmBooking = async () => {
@@ -156,8 +156,6 @@ export default function AdminDashboard() {
         return "bg-blue-100 text-blue-800"
       case "cancelled":
         return "bg-red-100 text-red-800"
-      case "blocked":
-        return "bg-gray-100 text-gray-800"
       default:
         return "bg-gray-100 text-gray-800"
     }
@@ -172,9 +170,9 @@ export default function AdminDashboard() {
         </div>
         <div className="mt-4 md:mt-0 space-x-4">
           <Button asChild className="bg-gouna-blue hover:bg-gouna-blue-dark text-white">
-            <Link href="/admin/properties/new">
+            <a href="/admin/properties/new">
               <Plus className="h-4 w-4 mr-2" /> Add Property
-            </Link>
+            </a>
           </Button>
         </div>
       </div>
@@ -213,11 +211,11 @@ export default function AdminDashboard() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-500">Pending Bookings</p>
-                <h3 className="text-3xl font-bold text-yellow-500 mt-1">{bookingCounts.pending}</h3>
+                <p className="text-sm font-medium text-gray-500">Awaiting Confirmation</p>
+                <h3 className="text-3xl font-bold text-blue-500 mt-1">{bookingCounts.awaiting_confirmation}</h3>
               </div>
-              <div className="p-3 bg-yellow-100 rounded-full">
-                <CalendarDays className="h-6 w-6 text-yellow-500" />
+              <div className="p-3 bg-blue-100 rounded-full">
+                <CalendarDays className="h-6 w-6 text-blue-500" />
               </div>
             </div>
           </CardContent>
@@ -228,10 +226,10 @@ export default function AdminDashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-gray-500">Awaiting Payment</p>
-                <h3 className="text-3xl font-bold text-orange-500 mt-1">{bookingCounts.awaiting_payment}</h3>
+                <h3 className="text-3xl font-bold text-yellow-500 mt-1">{bookingCounts.awaiting_payment}</h3>
               </div>
-              <div className="p-3 bg-orange-100 rounded-full">
-                <CalendarDays className="h-6 w-6 text-orange-500" />
+              <div className="p-3 bg-yellow-100 rounded-full">
+                <CalendarDays className="h-6 w-6 text-yellow-500" />
               </div>
             </div>
           </CardContent>
@@ -246,19 +244,21 @@ export default function AdminDashboard() {
             <CardDescription>Manage your rental properties</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Button asChild className="w-full">
-              <Link href="/admin/properties/new">
+            <a href="/admin/properties/new" className="block w-full">
+              <Button className="w-full">
                 <Plus className="h-4 w-4 mr-2" /> Add New Property
-              </Link>
-            </Button>
-            <Button asChild variant="outline" className="w-full">
-              <Link href="/admin/properties">
+              </Button>
+            </a>
+            <a href="/admin/properties" className="block w-full">
+              <Button variant="outline" className="w-full">
                 <ListFilter className="h-4 w-4 mr-2" /> Manage Properties
-              </Link>
-            </Button>
-            <Button asChild variant="outline" className="w-full">
-              <Link href="/properties">View Public Listings</Link>
-            </Button>
+              </Button>
+            </a>
+            <a href="/properties" className="block w-full">
+              <Button variant="outline" className="w-full">
+                View Public Listings
+              </Button>
+            </a>
           </CardContent>
         </Card>
 
@@ -268,12 +268,14 @@ export default function AdminDashboard() {
             <CardDescription>Manage your property bookings</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Button asChild className="w-full">
-              <Link href="/admin/bookings">View All Bookings</Link>
-            </Button>
-            <Button asChild variant="outline" className="w-full">
-              <Link href="/admin/bookings?status=awaiting_confirmation">View Pending Bookings</Link>
-            </Button>
+            <a href="/admin/bookings" className="block w-full">
+              <Button className="w-full">View All Bookings</Button>
+            </a>
+            <a href="/admin/bookings?status=awaiting_confirmation" className="block w-full">
+              <Button variant="outline" className="w-full">
+                View Pending Bookings
+              </Button>
+            </a>
           </CardContent>
         </Card>
 
@@ -283,24 +285,22 @@ export default function AdminDashboard() {
             <CardDescription>Admin tools and utilities</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <Button asChild className="w-full">
-              <Link href="/admin/seed">
+            <a href="/admin/seed" className="block w-full">
+              <Button className="w-full">
                 <Database className="h-4 w-4 mr-2" /> Seed Database
-              </Link>
-            </Button>
-            <Button asChild variant="outline" className="w-full">
-              <Link href="/admin/debug">
+              </Button>
+            </a>
+            <a href="/admin/debug" className="block w-full">
+              <Button variant="outline" className="w-full">
                 <Settings className="h-4 w-4 mr-2" /> Debug Tools
-              </Link>
-            </Button>
-            <Button
-              variant="outline"
-              className="w-full justify-start"
-              onClick={() => router.push("/admin/debug/verify-bookings")}
-            >
-              <span className="mr-2">🔍</span>
-              Verify Booking View
-            </Button>
+              </Button>
+            </a>
+            <a href="/admin/debug/verify-bookings" className="block w-full">
+              <Button variant="outline" className="w-full justify-start">
+                <span className="mr-2">🔍</span>
+                Verify Booking View
+              </Button>
+            </a>
           </CardContent>
         </Card>
       </div>
@@ -323,12 +323,16 @@ export default function AdminDashboard() {
               <div className="flex justify-between">
                 <span className="font-medium">${property.price}/night</span>
                 <div className="flex gap-2">
-                  <Button asChild variant="outline" size="sm">
-                    <Link href={`/admin/properties/edit/${property.id}`}>Edit</Link>
-                  </Button>
-                  <Button asChild variant="outline" size="sm">
-                    <Link href={`/admin/properties/calendar/${property.id}`}>Calendar</Link>
-                  </Button>
+                  <a href={`/admin/properties/edit/${property.id}`} className="inline-block">
+                    <Button variant="outline" size="sm">
+                      Edit
+                    </Button>
+                  </a>
+                  <a href={`/admin/properties/calendar/${property.id}`} className="inline-block">
+                    <Button variant="outline" size="sm">
+                      Calendar
+                    </Button>
+                  </a>
                 </div>
               </div>
             </CardContent>
@@ -363,30 +367,17 @@ export default function AdminDashboard() {
                   {new Date(booking.check_in).toLocaleDateString()} - {new Date(booking.check_out).toLocaleDateString()}
                 </td>
                 <td className="px-4 py-3 text-sm">
-                  <span
-                    className={`px-2 py-1 rounded-full text-xs ${
-                      booking.status === "confirmed"
-                        ? "bg-green-100 text-green-800"
-                        : booking.status === "awaiting_confirmation"
-                          ? "bg-blue-100 text-blue-800"
-                          : booking.status === "awaiting_payment"
-                            ? "bg-yellow-100 text-yellow-800"
-                            : "bg-gray-100 text-gray-800"
-                    }`}
-                  >
+                  <span className={`px-2 py-1 rounded-full text-xs ${getStatusColor(booking.status)}`}>
                     {booking.status.replace("_", " ")}
                   </span>
                 </td>
                 <td className="px-4 py-3 text-sm">
                   <div className="flex flex-wrap gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-8 px-3"
-                      onClick={() => handleViewBooking(booking.id)}
-                    >
-                      <Eye className="h-4 w-4 mr-1" /> View
-                    </Button>
+                    <a href={`/admin/bookings/${booking.id}`} className="inline-block">
+                      <Button variant="outline" size="sm" className="h-8 px-3" type="button">
+                        <Eye className="h-4 w-4 mr-1" /> View
+                      </Button>
+                    </a>
 
                     {booking.status === "awaiting_confirmation" && booking.payment_proof && (
                       <Button
@@ -419,14 +410,16 @@ export default function AdminDashboard() {
                     )}
 
                     {booking.property_id && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 px-3 text-blue-600 border-blue-600 hover:bg-blue-50"
-                        onClick={() => handleViewPropertyCalendar(booking.property_id)}
-                      >
-                        <Calendar className="h-4 w-4 mr-1" /> Calendar
-                      </Button>
+                      <a href={`/admin/properties/calendar/${booking.property_id}`} className="inline-block">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-8 px-3 text-blue-600 border-blue-600 hover:bg-blue-50"
+                          type="button"
+                        >
+                          <Calendar className="h-4 w-4 mr-1" /> Calendar
+                        </Button>
+                      </a>
                     )}
                   </div>
                 </td>

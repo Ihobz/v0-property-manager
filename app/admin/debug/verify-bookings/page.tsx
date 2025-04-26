@@ -4,7 +4,6 @@ import type React from "react"
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -108,11 +107,6 @@ export default function VerifyBookingsPage() {
     }
   }
 
-  // We'll use a direct link instead of programmatic navigation
-  const getBookingLink = (bookingId: string) => {
-    return `/admin/bookings/${bookingId}`
-  }
-
   if (isLoading) {
     return (
       <div className="container py-12 flex items-center justify-center">
@@ -157,11 +151,11 @@ export default function VerifyBookingsPage() {
                             "Verify"
                           )}
                         </Button>
-                        <Link href={getBookingLink(booking.id)}>
-                          <Button variant="default" size="sm">
+                        <a href={`/admin/bookings/${booking.id}`} className="inline-block">
+                          <Button variant="default" size="sm" type="button">
                             View <ExternalLink className="h-3 w-3 ml-1" />
                           </Button>
-                        </Link>
+                        </a>
                       </div>
                     </div>
                   </div>
@@ -245,11 +239,11 @@ export default function VerifyBookingsPage() {
 
                   <div className="mt-3 flex justify-end">
                     {result.exists && (
-                      <Link href={getBookingLink(result.originalId)}>
-                        <Button variant="outline" size="sm">
+                      <a href={`/admin/bookings/${result.originalId}`} className="inline-block">
+                        <Button variant="outline" size="sm" type="button">
                           Test Navigation <ExternalLink className="h-3 w-3 ml-1" />
                         </Button>
-                      </Link>
+                      </a>
                     )}
                     {!result.exists && (
                       <Button variant="outline" size="sm" disabled>

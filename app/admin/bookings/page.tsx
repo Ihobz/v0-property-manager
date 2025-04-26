@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -213,8 +212,7 @@ export default function BookingsPage() {
         return
       }
 
-      // If verification passes, navigate to the booking details page
-      // We'll use window.location for a hard navigation
+      // If verification passes, navigate to the booking details page using direct URL
       window.location.href = `/admin/bookings/${bookingId}`
     } catch (error) {
       console.error("Error in handleViewBooking:", error)
@@ -230,7 +228,7 @@ export default function BookingsPage() {
   }
 
   const handleViewPropertyCalendar = (propertyId: string) => {
-    router.push(`/admin/properties/calendar/${propertyId}`)
+    window.location.href = `/admin/properties/calendar/${propertyId}`
   }
 
   if (isLoading) {
@@ -271,8 +269,6 @@ export default function BookingsPage() {
         return "bg-blue-100 text-blue-800"
       case "cancelled":
         return "bg-red-100 text-red-800"
-      case "blocked":
-        return "bg-gray-100 text-gray-800"
       default:
         return "bg-gray-100 text-gray-800"
     }
@@ -307,9 +303,7 @@ export default function BookingsPage() {
               <SelectItem value="awaiting_confirmation">Awaiting Confirmation</SelectItem>
               <SelectItem value="awaiting_payment">Awaiting Payment</SelectItem>
               <SelectItem value="confirmed">Confirmed</SelectItem>
-              <SelectItem value="completed">Completed</SelectItem>
               <SelectItem value="cancelled">Cancelled</SelectItem>
-              <SelectItem value="blocked">Blocked</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -355,11 +349,12 @@ export default function BookingsPage() {
                       </td>
                       <td className="px-4 py-3 text-sm">
                         <div className="flex flex-wrap gap-2">
-                          <Link href={`/admin/bookings/${booking.id}`} passHref>
-                            <Button variant="outline" size="sm" className="h-8 px-3" as="a">
+                          {/* Use a direct HTML anchor tag for navigation */}
+                          <a href={`/admin/bookings/${booking.id}`} className="inline-block">
+                            <Button variant="outline" size="sm" className="h-8 px-3" type="button">
                               <Eye className="h-4 w-4 mr-1" /> View
                             </Button>
-                          </Link>
+                          </a>
 
                           {booking.status === "awaiting_confirmation" && booking.payment_proof && (
                             <Button
@@ -392,14 +387,16 @@ export default function BookingsPage() {
                           )}
 
                           {booking.property_id && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="h-8 px-3 text-blue-600 border-blue-600 hover:bg-blue-50"
-                              onClick={() => handleViewPropertyCalendar(booking.property_id)}
-                            >
-                              <Calendar className="h-4 w-4 mr-1" /> Calendar
-                            </Button>
+                            <a href={`/admin/properties/calendar/${booking.property_id}`} className="inline-block">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8 px-3 text-blue-600 border-blue-600 hover:bg-blue-50"
+                                type="button"
+                              >
+                                <Calendar className="h-4 w-4 mr-1" /> Calendar
+                              </Button>
+                            </a>
                           )}
                         </div>
                       </td>
