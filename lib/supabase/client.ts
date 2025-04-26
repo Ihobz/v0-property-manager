@@ -11,7 +11,10 @@ export function createClientSupabaseClient() {
   const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
   if (!supabaseUrl || !supabaseKey) {
-    console.error("Missing Supabase environment variables for client")
+    console.error("Missing Supabase environment variables for client:", {
+      hasUrl: !!supabaseUrl,
+      hasKey: !!supabaseKey,
+    })
     throw new Error("Supabase configuration is missing")
   }
 
@@ -26,6 +29,10 @@ export function createClientSupabaseClient() {
         fetch: (...args) => {
           return fetch(...args)
         },
+      },
+      // Add reasonable timeouts to avoid hanging requests
+      realtime: {
+        timeout: 10000, // 10 seconds
       },
     })
     return supabaseClient

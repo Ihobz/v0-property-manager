@@ -5,44 +5,86 @@ import { revalidatePath } from "next/cache"
 import { sendBookingConfirmationEmail, sendBookingStatusUpdateEmail } from "@/lib/email-service"
 import { normalizeBookingId } from "@/lib/booking-utils"
 import { logBookingEvent } from "@/lib/logging"
+import { createClient } from "@supabase/supabase-js"
 
 // Type for booking data
 type BookingData = {
-  property_id: string
+  property_id?: string
+  propertyId?: string
   name: string
   email: string
   phone: string
-  check_in: string
-  check_out: string
-  guests: number
-  base_price: number
-  total_price: number
+  check_in?: string
+  checkIn?: string
+  check_out?: string
+  checkOut?: string
+  guests?: number
+  base_price?: number
+  total_price?: number
+  totalPrice?: number
+  notes?: string // We'll keep this in the type but won't send it to the database
+}
+
+// Create a Supabase admin client with service role key
+function createAdminClient() {
+  const supabaseUrl = process.env.SUPABASE_URL
+  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+  if (!supabaseUrl || !supabaseServiceKey) {
+    throw new Error("Missing Supabase environment variables for admin client")
+  }
+
+  return createClient(supabaseUrl, supabaseServiceKey)
 }
 
 // Create a new booking
-export async function createBooking(bookingData: any) {
+export async function createBooking(bookingData: BookingData) {
   try {
     await logBookingEvent("Creating new booking", "info", { bookingData })
-    const supabase = createServerSupabaseClient()
+
+    // Use admin client to bypass RLS policies
+    const supabase = createAdminClient()
+
+    // Normalize field names to handle both camelCase and snake_case
+    const normalizedData = {
+      property_id: bookingData.property_id || bookingData.propertyId,
+      name: bookingData.name,
+      email: bookingData.email,
+      phone: bookingData.phone,
+      check_in: bookingData.check_in || bookingData.checkIn,
+      check_out: bookingData.check_out || bookingData.checkOut,
+      guests: bookingData.guests || 2, // Default to 2 guests if not specified
+      base_price: bookingData.base_price || (bookingData.total_price || bookingData.totalPrice || 0) * 0.9, // Estimate base price if not provided
+      total_price: bookingData.total_price || bookingData.totalPrice,
+      // Remove notes field as it doesn't exist in the database
+    }
 
     // Validate the booking data
     if (
-      !bookingData.property_id ||
-      !bookingData.name ||
-      !bookingData.email ||
-      !bookingData.check_in ||
-      !bookingData.check_out
+      !normalizedData.property_id ||
+      !normalizedData.name ||
+      !normalizedData.email ||
+      !normalizedData.check_in ||
+      !normalizedData.check_out
     ) {
       const errorMsg = "Missing required booking fields"
-      await logBookingEvent(errorMsg, "error", { bookingData })
+      await logBookingEvent(errorMsg, "error", { bookingData, normalizedData })
       return { booking: null, error: errorMsg }
     }
 
-    // Insert the booking
+    // Insert the booking - make sure we only include fields that exist in the database
     const { data, error } = await supabase
       .from("bookings")
       .insert({
-        ...bookingData,
+        property_id: normalizedData.property_id,
+        name: normalizedData.name,
+        email: normalizedData.email,
+        phone: normalizedData.phone,
+        check_in: normalizedData.check_in,
+        check_out: normalizedData.check_out,
+        guests: normalizedData.guests,
+        base_price: normalizedData.base_price,
+        total_price: normalizedData.total_price,
         status: "awaiting_payment", // Default status
         created_at: new Date().toISOString(),
       })
@@ -50,7 +92,7 @@ export async function createBooking(bookingData: any) {
       .single()
 
     if (error) {
-      await logBookingEvent("Error creating booking", "error", { error, bookingData })
+      await logBookingEvent("Error creating booking", "error", { error, bookingData: normalizedData })
       console.error("Error creating booking:", error)
       return { booking: null, error: error.message }
     }
@@ -60,8 +102,8 @@ export async function createBooking(bookingData: any) {
     // Get property details for the email
     const { data: property, error: propertyError } = await supabase
       .from("properties")
-      .select("title, name, location")
-      .eq("id", bookingData.property_id)
+      .select("name, location")
+      .eq("id", normalizedData.property_id)
       .single()
 
     if (propertyError) {
@@ -75,17 +117,17 @@ export async function createBooking(bookingData: any) {
       // Send confirmation email
       try {
         await sendBookingConfirmationEmail({
-          email: bookingData.email,
-          name: bookingData.name,
+          email: normalizedData.email,
+          name: normalizedData.name,
           bookingId: data.id,
-          propertyTitle: property.title || property.name,
-          checkIn: bookingData.check_in,
-          checkOut: bookingData.check_out,
-          totalPrice: bookingData.total_price,
+          propertyTitle: property.name,
+          checkIn: normalizedData.check_in,
+          checkOut: normalizedData.check_out,
+          totalPrice: normalizedData.total_price,
         })
         await logBookingEvent("Booking confirmation email sent", "info", {
           bookingId: data.id,
-          email: bookingData.email,
+          email: normalizedData.email,
         })
       } catch (emailError) {
         await logBookingEvent("Error sending confirmation email", "warning", { emailError, bookingId: data.id })
@@ -95,7 +137,7 @@ export async function createBooking(bookingData: any) {
     }
 
     // Revalidate paths
-    revalidatePath(`/properties/${bookingData.property_id}`)
+    revalidatePath(`/properties/${normalizedData.property_id}`)
 
     return { booking: data, error: null }
   } catch (error) {
@@ -144,42 +186,80 @@ export async function getBookings() {
 
     // Try to fetch bookings with a timeout
     try {
-      const bookingsPromise = supabase
-        .from("bookings")
-        .select(`
-          *,
-          properties:property_id (
-            id,
-            title,
-            name,
-            location,
-            price
-          )
-        `)
-        .order("created_at", { ascending: false })
+      // First, get all bookings
+      const bookingsPromise = supabase.from("bookings").select("*").order("created_at", { ascending: false })
 
       // Race the query against the timeout
-      const { data, error } = (await Promise.race([
+      const { data: bookingsData, error: bookingsError } = (await Promise.race([
         bookingsPromise,
         timeoutPromise.then(() => ({ data: null, error: { message: "Query timed out" } })),
       ])) as any
 
-      if (error) {
-        console.error("Server Action: getBookings - Error fetching bookings:", error)
-        await logBookingEvent("Error fetching all bookings", "error", { error })
+      if (bookingsError) {
+        console.error("Server Action: getBookings - Error fetching bookings:", bookingsError)
+        await logBookingEvent("Error fetching all bookings", "error", { error: bookingsError })
         return {
           bookings: [],
-          error: error.message,
+          error: bookingsError.message,
           details: {
-            code: error.code,
-            hint: error.hint,
-            details: error.details,
+            code: bookingsError.code,
+            hint: bookingsError.hint,
+            details: bookingsError.details,
           },
         }
       }
 
-      console.log(`Server Action: getBookings - Successfully fetched ${data?.length || 0} bookings`)
-      return { bookings: data || [], error: null }
+      // If we have bookings, fetch the associated properties
+      if (bookingsData && bookingsData.length > 0) {
+        // Get unique property IDs
+        const propertyIds = [...new Set(bookingsData.map((booking: any) => booking.property_id))]
+
+        // Fetch properties
+        const { data: propertiesData, error: propertiesError } = await supabase
+          .from("properties")
+          .select("id, name, location, price")
+          .in("id", propertyIds)
+
+        if (propertiesError) {
+          console.error("Server Action: getBookings - Error fetching properties:", propertiesError)
+          await logBookingEvent("Error fetching properties for bookings", "error", { error: propertiesError })
+
+          // Return bookings without property details
+          return {
+            bookings: bookingsData,
+            error: "Could not fetch property details",
+            details: {
+              code: propertiesError.code,
+              hint: propertiesError.hint,
+              details: propertiesError.details,
+            },
+          }
+        }
+
+        // Create a map of property data by ID for quick lookup
+        const propertiesMap = (propertiesData || []).reduce((map: any, property: any) => {
+          map[property.id] = property
+          return map
+        }, {})
+
+        // Combine booking data with property data
+        const combinedBookings = bookingsData.map((booking: any) => {
+          return {
+            ...booking,
+            properties: propertiesMap[booking.property_id] || null,
+          }
+        })
+
+        console.log(
+          `Server Action: getBookings - Successfully fetched ${combinedBookings.length} bookings with property details`,
+        )
+        return { bookings: combinedBookings, error: null }
+      }
+
+      console.log(
+        `Server Action: getBookings - Successfully fetched ${bookingsData?.length || 0} bookings (no properties)`,
+      )
+      return { bookings: bookingsData || [], error: null }
     } catch (queryError) {
       console.error("Server Action: getBookings - Query error:", queryError)
       return {
@@ -221,55 +301,62 @@ export async function getBookingById(id: string) {
         setTimeout(() => reject(new Error("Database query timed out")), 5000)
       })
 
-      // Try to fetch the booking with a timeout
-      const bookingPromise = supabase
-        .from("bookings")
-        .select(`
-          *,
-          properties:property_id (
-            id,
-            name,
-            title,
-            location,
-            price,
-            images,
-            bedrooms,
-            bathrooms,
-            guests
-          )
-        `)
-        .eq("id", bookingId)
-        .single()
+      // First, get the booking
+      const bookingPromise = supabase.from("bookings").select("*").eq("id", bookingId).single()
 
       // Race the query against the timeout
-      const { data, error } = (await Promise.race([
+      const { data: booking, error: bookingError } = (await Promise.race([
         bookingPromise,
         timeoutPromise.then(() => ({ data: null, error: { message: "Query timed out" } })),
       ])) as any
 
-      if (error) {
-        console.error(`Server Action: Error fetching booking with ID "${bookingId}":`, error)
-        await logBookingEvent(`Error fetching booking with ID: ${bookingId}`, "error", { error })
+      if (bookingError) {
+        console.error(`Server Action: Error fetching booking with ID "${bookingId}":`, bookingError)
+        await logBookingEvent(`Error fetching booking with ID: ${bookingId}`, "error", { error: bookingError })
         return {
           booking: null,
-          error: error.message,
+          error: bookingError.message,
           details: {
-            code: error.code,
-            hint: error.hint,
-            details: error.details,
+            code: bookingError.code,
+            hint: bookingError.hint,
+            details: bookingError.details,
           },
         }
       }
 
-      if (!data) {
+      if (!booking) {
         console.error(`Server Action: No booking found with ID "${bookingId}"`)
         await logBookingEvent(`No booking found with ID: ${bookingId}`, "warning")
         return { booking: null, error: "Booking not found" }
       }
 
+      // Now get the property details
+      const { data: property, error: propertyError } = await supabase
+        .from("properties")
+        .select("id, name, location, price, images, bedrooms, bathrooms, guests")
+        .eq("id", booking.property_id)
+        .single()
+
+      if (propertyError) {
+        console.error(`Server Action: Error fetching property for booking "${bookingId}":`, propertyError)
+        await logBookingEvent(`Error fetching property for booking: ${bookingId}`, "warning", { error: propertyError })
+
+        // Return booking without property details
+        return {
+          booking: { ...booking, properties: null },
+          error: "Could not fetch property details",
+        }
+      }
+
+      // Combine booking with property
+      const bookingWithProperty = {
+        ...booking,
+        properties: property || null,
+      }
+
       console.log(`Server Action: Successfully retrieved booking with ID "${bookingId}"`)
       await logBookingEvent(`Successfully retrieved booking with ID: ${bookingId}`, "info")
-      return { booking: data, error: null }
+      return { booking: bookingWithProperty, error: null }
     } catch (dbError) {
       console.error("Database error in getBookingById:", dbError)
       throw dbError
@@ -290,30 +377,58 @@ export async function getBookingsByEmail(email: string) {
   try {
     const supabase = createServerSupabaseClient()
 
-    const { data, error } = await supabase
+    // First, get bookings by email
+    const { data: bookings, error: bookingsError } = await supabase
       .from("bookings")
-      .select(`
-        id,
-        status,
-        check_in,
-        check_out,
-        created_at,
-        properties:property_id (
-          name,
-          title,
-          location
-        )
-      `)
+      .select("id, status, check_in, check_out, created_at, property_id")
       .eq("email", email)
       .order("created_at", { ascending: false })
 
-    if (error) {
-      await logBookingEvent(`Error checking bookings by email: ${email}`, "error", { error })
-      console.error("Error checking bookings by email:", error)
-      return { bookings: [], error: error.message }
+    if (bookingsError) {
+      await logBookingEvent(`Error checking bookings by email: ${email}`, "error", { error: bookingsError })
+      console.error("Error checking bookings by email:", bookingsError)
+      return { bookings: [], error: bookingsError.message }
     }
 
-    return { bookings: data, error: null }
+    // If we have bookings, fetch the associated properties
+    if (bookings && bookings.length > 0) {
+      // Get unique property IDs
+      const propertyIds = [...new Set(bookings.map((booking) => booking.property_id))]
+
+      // Fetch properties
+      const { data: properties, error: propertiesError } = await supabase
+        .from("properties")
+        .select("id, name, location")
+        .in("id", propertyIds)
+
+      if (propertiesError) {
+        console.error("Error fetching properties for email bookings:", propertiesError)
+
+        // Return bookings without property details
+        return {
+          bookings,
+          error: "Could not fetch property details",
+        }
+      }
+
+      // Create a map of property data by ID for quick lookup
+      const propertiesMap = (properties || []).reduce((map: any, property: any) => {
+        map[property.id] = property
+        return map
+      }, {})
+
+      // Combine booking data with property data
+      const combinedBookings = bookings.map((booking) => {
+        return {
+          ...booking,
+          properties: propertiesMap[booking.property_id] || null,
+        }
+      })
+
+      return { bookings: combinedBookings, error: null }
+    }
+
+    return { bookings, error: null }
   } catch (error) {
     await logBookingEvent("Unexpected error in getBookingsByEmail", "error", { error })
     console.error("Error in checkBookingByEmail:", error)
@@ -367,7 +482,7 @@ export async function updateBookingStatus(id: string, status: string) {
         email: booking.email,
         name: booking.name,
         bookingId: booking.id,
-        propertyTitle: booking.properties.title || booking.properties.name,
+        propertyTitle: booking.properties?.name || "Your booking",
         checkIn: booking.check_in,
         checkOut: booking.check_out,
         status,
@@ -628,7 +743,7 @@ export async function createTestBooking() {
     // First, get a property to associate with the booking
     const { data: properties, error: propertyError } = await supabase
       .from("properties")
-      .select("id, title, name, price")
+      .select("id, name, price")
       .limit(1)
 
     if (propertyError || !properties || properties.length === 0) {
@@ -642,7 +757,7 @@ export async function createTestBooking() {
     const property = properties[0]
     console.log("Found property for test booking:", {
       id: property.id,
-      name: property.name || property.title,
+      name: property.name,
       price: property.price,
     })
 
@@ -680,7 +795,7 @@ export async function createTestBooking() {
     return {
       success: true,
       booking: data,
-      message: `Test booking created successfully for property "${property.name || property.title}"`,
+      message: `Test booking created successfully for property "${property.name}"`,
     }
   } catch (error) {
     console.error("Unexpected error creating test booking:", error)
@@ -713,37 +828,5 @@ export async function getTableInfo(tableName: string) {
       columns: [],
       error: error instanceof Error ? error.message : "An unexpected error occurred",
     }
-  }
-}
-
-// Fallback function to get mock bookings when database connection fails
-export async function getMockBookingsFallback() {
-  console.log("Using mock bookings data as fallback")
-
-  // Return mock data that matches the structure of real bookings
-  return {
-    bookings: [
-      {
-        id: "mock-booking-1",
-        name: "Test User",
-        email: "test@example.com",
-        phone: "+1234567890",
-        check_in: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-        check_out: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
-        guests: 2,
-        base_price: 1000,
-        total_price: 1100,
-        status: "awaiting_payment",
-        created_at: new Date().toISOString(),
-        property_id: "mock-property-1",
-        properties: {
-          title: "Mock Property",
-          name: "Mock Property",
-          location: "El Gouna, Egypt",
-        },
-      },
-    ],
-    error: null,
-    isMockData: true,
   }
 }

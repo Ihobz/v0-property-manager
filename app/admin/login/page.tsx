@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useAuth } from "@/lib/auth-provider"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,13 +10,22 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Label } from "@/components/ui/label"
 import { AlertCircle, Loader2 } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { useRouter } from "next/navigation"
 
 export default function AdminLoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
-  const { login } = useAuth()
+  const { login, isAuthenticated, isAdmin } = useAuth()
+  const router = useRouter()
+
+  // Redirect to admin dashboard if already authenticated and is admin
+  useEffect(() => {
+    if (isAuthenticated && isAdmin) {
+      router.push("/admin")
+    }
+  }, [isAuthenticated, isAdmin, router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -26,8 +35,7 @@ export default function AdminLoginPage() {
     try {
       const { success, error } = await login(email, password)
       if (success) {
-        // Use window.location for a hard redirect
-        window.location.href = "/admin"
+        router.push("/admin")
       } else {
         setError(error || "Failed to sign in")
       }
@@ -89,11 +97,7 @@ export default function AdminLoginPage() {
         <CardFooter className="flex justify-center">
           <p className="text-sm text-gray-500">
             Forgot your password?{" "}
-            <Button
-              variant="link"
-              className="p-0 h-auto"
-              onClick={() => (window.location.href = "/admin/reset-password")}
-            >
+            <Button variant="link" className="p-0 h-auto" onClick={() => router.push("/admin/reset-password")}>
               Reset it here
             </Button>
           </p>

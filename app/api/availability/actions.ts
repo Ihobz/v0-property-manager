@@ -7,6 +7,10 @@ import { revalidatePath } from "next/cache"
 // Check if a property is available for the given date range
 export async function checkPropertyAvailability(propertyId: string, checkIn: string, checkOut: string) {
   try {
+    if (!propertyId || propertyId === "undefined") {
+      return { available: false, error: "Invalid property ID" }
+    }
+
     const supabase = createServerSupabaseClient()
 
     // Get all bookings for this property
@@ -67,6 +71,19 @@ export async function checkPropertyAvailability(propertyId: string, checkIn: str
 // Get all booked dates for a property
 export async function getPropertyBookedDates(propertyId: string) {
   try {
+    // Validate propertyId
+    if (!propertyId || propertyId === "undefined") {
+      console.error("Invalid property ID provided:", propertyId)
+      return {
+        bookedDates: [],
+        confirmedDates: [],
+        pendingDates: [],
+        awaitingPaymentDates: [],
+        blockedDates: [],
+        error: "Invalid property ID",
+      }
+    }
+
     const supabase = createServerSupabaseClient()
 
     // Get all bookings for this property

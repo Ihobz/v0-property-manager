@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { getPropertyBookedDates } from "@/app/api/availability/actions"
 
+// Export with both names for backward compatibility
 export function usePropertyAvailability(propertyId: string) {
   const [bookedDates, setBookedDates] = useState<string[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -35,3 +36,6 @@ export function usePropertyAvailability(propertyId: string) {
 
   return { bookedDates, isLoading, error }
 }
+
+// Add this alias export to fix the import error
+export const useAvailability = usePropertyAvailability

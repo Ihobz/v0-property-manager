@@ -18,14 +18,33 @@ import { cn } from "@/lib/utils"
 import { createBooking } from "@/app/api/bookings/actions"
 import { getPropertyBookedDates } from "@/app/api/availability/actions"
 
-interface BookingFormProps {
-  propertyId: string
-  pricePerNight: number
-  cleaningFee: number
+interface Property {
+  id?: string
+  price?: number
+  cleaningFee?: number
+  [key: string]: any
 }
 
-export default function BookingForm({ propertyId, pricePerNight, cleaningFee }: BookingFormProps) {
+interface BookingFormProps {
+  property?: Property
+  propertyId?: string
+  pricePerNight?: number
+  cleaningFee?: number
+}
+
+export default function BookingForm({
+  property,
+  propertyId: propId,
+  pricePerNight: propPrice,
+  cleaningFee: propCleaningFee,
+}: BookingFormProps) {
   const router = useRouter()
+
+  // Handle both property object and direct props with fallbacks
+  const propertyId = property?.id || propId || ""
+  const pricePerNight = property?.price || propPrice || 0
+  const cleaningFee = property?.cleaningFee || propCleaningFee || 0
+
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
   const [phone, setPhone] = useState("")
@@ -39,16 +58,29 @@ export default function BookingForm({ propertyId, pricePerNight, cleaningFee }: 
   const [awaitingPaymentDates, setAwaitingPaymentDates] = useState<string[]>([])
   const [blockedDates, setBlockedDates] = useState<string[]>([])
   const [isLoadingDates, setIsLoadingDates] = useState(true)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
-  // Calculate total price
-  const nights = checkIn && checkOut ? differenceInDays(checkOut, checkIn) : 0
-  const subtotal = nights * pricePerNight
-  const total = subtotal + cleaningFee
+  // Calculate total price with safety checks
+  const nights = checkIn && checkOut ? Math.max(0, differenceInDays(checkOut, checkIn)) : 0
+  const subtotal = nights * (typeof pricePerNight === "number" ? pricePerNight : 0)
+  const total = subtotal + (typeof cleaningFee === "number" ? cleaningFee : 0)
 
   useEffect(() => {
     async function fetchBookedDates() {
       setIsLoadingDates(true)
       try {
+        // Check if propertyId is valid before making the request
+        if (!propertyId) {
+          console.error("Property ID is missing or invalid:", propertyId)
+          toast({
+            variant: "destructive",
+            title: "Error",
+            description: "Failed to load availability data. Invalid property ID.",
+          })
+          setIsLoadingDates(false)
+          return
+        }
+
         const { bookedDates, confirmedDates, pendingDates, awaitingPaymentDates, blockedDates, error } =
           await getPropertyBookedDates(propertyId)
 
@@ -84,6 +116,16 @@ export default function BookingForm({ propertyId, pricePerNight, cleaningFee }: 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setErrorMessage(null)
+
+    if (!propertyId) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Invalid property ID. Please try again.",
+      })
+      return
+    }
 
     if (!checkIn || !checkOut) {
       toast({
@@ -109,18 +151,23 @@ export default function BookingForm({ propertyId, pricePerNight, cleaningFee }: 
       const formattedCheckIn = format(checkIn, "yyyy-MM-dd")
       const formattedCheckOut = format(checkOut, "yyyy-MM-dd")
 
-      const result = await createBooking({
-        propertyId,
+      // Create booking data with the correct field names expected by the server
+      const bookingData = {
+        property_id: propertyId,
         name,
         email,
         phone,
-        checkIn: formattedCheckIn,
-        checkOut: formattedCheckOut,
-        notes,
-        totalPrice: total,
-      })
+        check_in: formattedCheckIn,
+        check_out: formattedCheckOut,
+        guests: 2, // Default value
+        base_price: subtotal,
+        total_price: total,
+      }
+
+      const result = await createBooking(bookingData)
 
       if (result.error) {
+        setErrorMessage(result.error)
         throw new Error(result.error)
       }
 
@@ -130,7 +177,17 @@ export default function BookingForm({ propertyId, pricePerNight, cleaningFee }: 
       })
 
       // Redirect to the payment proof upload page
-      router.push(`/upload/${result.bookingId}`)
+      if (result.booking && result.booking.id) {
+        router.push(`/upload/${result.booking.id}`)
+      } else {
+        // Fallback if no booking ID is returned
+        toast({
+          variant: "destructive",
+          title: "Warning",
+          description: "Booking was created but no ID was returned. Please check your email for booking details.",
+        })
+        router.push(`/properties/${propertyId}?booking=success`)
+      }
     } catch (error) {
       console.error("Error creating booking:", error)
       toast({
@@ -172,6 +229,12 @@ export default function BookingForm({ propertyId, pricePerNight, cleaningFee }: 
     return ""
   }
 
+  // Safe toFixed function that handles undefined/null values
+  const safeToFixed = (value: number | undefined | null, decimals = 2): string => {
+    if (value === undefined || value === null) return (0).toFixed(decimals)
+    return value.toFixed(decimals)
+  }
+
   return (
     <Card className="w-full">
       <CardHeader>
@@ -180,6 +243,14 @@ export default function BookingForm({ propertyId, pricePerNight, cleaningFee }: 
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
+          {errorMessage && (
+            <div className="bg-red-50 border border-red-200 text-red-700 p-3 rounded-md text-sm">
+              <p className="font-medium">Error:</p>
+              <p>{errorMessage}</p>
+              <p className="mt-1 text-xs">Please try again or contact support if the issue persists.</p>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label htmlFor="name">Full Name</Label>
@@ -304,12 +375,16 @@ export default function BookingForm({ propertyId, pricePerNight, cleaningFee }: 
               onChange={(e) => setNotes(e.target.value)}
               className="min-h-[100px]"
             />
+            <p className="text-xs text-gray-500">
+              Your special requests will be noted but may not be guaranteed. We'll contact you if we need more
+              information.
+            </p>
           </div>
 
           <div className="space-y-2 bg-gray-50 p-4 rounded-md">
             <div className="flex justify-between text-sm">
               <span>Price per night</span>
-              <span>${pricePerNight.toFixed(2)}</span>
+              <span>${safeToFixed(pricePerNight)}</span>
             </div>
             <div className="flex justify-between text-sm">
               <span>Number of nights</span>
@@ -317,15 +392,15 @@ export default function BookingForm({ propertyId, pricePerNight, cleaningFee }: 
             </div>
             <div className="flex justify-between text-sm">
               <span>Subtotal</span>
-              <span>${subtotal.toFixed(2)}</span>
+              <span>${safeToFixed(subtotal)}</span>
             </div>
             <div className="flex justify-between text-sm">
               <span>Cleaning fee</span>
-              <span>${cleaningFee.toFixed(2)}</span>
+              <span>${safeToFixed(cleaningFee)}</span>
             </div>
             <div className="flex justify-between font-bold pt-2 border-t">
               <span>Total</span>
-              <span>${total.toFixed(2)}</span>
+              <span>${safeToFixed(total)}</span>
             </div>
           </div>
 
@@ -338,16 +413,7 @@ export default function BookingForm({ propertyId, pricePerNight, cleaningFee }: 
             </ul>
           </div>
 
-          <div className="flex items-center gap-2 mt-2">
-            <div className="w-3 h-3 rounded-full bg-green-100"></div>
-            <span className="text-xs">Confirmed bookings</span>
-            <div className="w-3 h-3 rounded-full bg-blue-100 ml-2"></div>
-            <span className="text-xs">Pending confirmation</span>
-            <div className="w-3 h-3 rounded-full bg-yellow-100 ml-2"></div>
-            <span className="text-xs">Awaiting payment</span>
-            <div className="w-3 h-3 rounded-full bg-gray-200 ml-2"></div>
-            <span className="text-xs">Blocked dates</span>
-          </div>
+          {/* Color key removed as requested */}
         </form>
       </CardContent>
       <CardFooter>

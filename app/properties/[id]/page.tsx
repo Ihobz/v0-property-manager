@@ -13,6 +13,12 @@ export default async function PropertyDetailsPage({ params }: { params: { id: st
     notFound()
   }
 
+  // Ensure property has an id field
+  const propertyWithId = {
+    ...property,
+    id: params.id, // Ensure the ID is explicitly set
+  }
+
   return (
     <div className="container py-12">
       <h1 className="text-3xl font-bold text-gouna-blue-dark mb-2">{property.title}</h1>
@@ -125,7 +131,7 @@ export default async function PropertyDetailsPage({ params }: { params: { id: st
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <BookingForm property={property} />
+              <BookingForm property={propertyWithId} />
             </CardContent>
           </Card>
         </div>

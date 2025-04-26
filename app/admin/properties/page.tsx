@@ -68,9 +68,8 @@ export default function AdminPropertiesPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Name</TableHead>
+                  <TableHead>Title</TableHead>
                   <TableHead>Location</TableHead>
-                  <TableHead>Type</TableHead>
                   <TableHead className="text-right">Price/Night</TableHead>
                   <TableHead className="text-center">Actions</TableHead>
                 </TableRow>
@@ -78,9 +77,8 @@ export default function AdminPropertiesPage() {
               <TableBody>
                 {properties.map((property) => (
                   <TableRow key={property.id}>
-                    <TableCell className="font-medium">{property.name}</TableCell>
+                    <TableCell className="font-medium">{property.title || property.short_description}</TableCell>
                     <TableCell>{property.location}</TableCell>
-                    <TableCell>{property.property_type}</TableCell>
                     <TableCell className="text-right">${property.price}</TableCell>
                     <TableCell>
                       <div className="flex justify-center space-x-2">
