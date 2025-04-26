@@ -1,4 +1,5 @@
-import { createClient } from "@/lib/supabase/server"
+// Client-safe logging implementation
+// This version doesn't use next/headers and can be imported in client components
 
 // Define log levels
 export type LogLevel = "info" | "warning" | "error" | "debug"
@@ -6,135 +7,74 @@ export type LogLevel = "info" | "warning" | "error" | "debug"
 // Define log categories
 export type LogCategory = "system" | "booking" | "property" | "user" | "payment" | "upload"
 
-// Log a system event
-export async function logSystemEvent(
-  level: LogLevel,
-  title: string,
-  details: string,
-  metadata: Record<string, any> = {},
-) {
+// Client-side logging function that sends logs to the server
+async function logToServer(level: LogLevel, message: string, details?: any) {
   try {
-    const supabase = createClient()
-
-    await supabase.from("logs").insert({
-      level,
-      category: "system",
-      title,
-      details,
-      metadata,
+    // Use fetch to send logs to a server endpoint
+    await fetch("/api/log", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        level,
+        message,
+        details,
+        timestamp: new Date().toISOString(),
+      }),
     })
   } catch (error) {
-    console.error("Failed to log system event:", error)
-  }
-}
-
-// Log a booking-related event
-export async function logBookingEvent(
-  level: LogLevel,
-  title: string,
-  details: string,
-  bookingId: string,
-  metadata: Record<string, any> = {},
-) {
-  try {
-    const supabase = createClient()
-
-    await supabase.from("logs").insert({
-      level,
-      category: "booking",
-      title,
+    // Fall back to console logging if the server request fails
+    console[level === "error" ? "error" : level === "warning" ? "warn" : "log"](
+      `[${level.toUpperCase()}] ${message}`,
       details,
-      booking_id: bookingId,
-      metadata,
-    })
-  } catch (error) {
-    console.error("Failed to log booking event:", error)
-  }
-}
-
-// Log a property-related event
-export async function logPropertyEvent(
-  level: LogLevel,
-  title: string,
-  details: string,
-  propertyId: string,
-  metadata: Record<string, any> = {},
-) {
-  try {
-    const supabase = createClient()
-
-    await supabase.from("logs").insert({
-      level,
-      category: "property",
-      title,
-      details,
-      property_id: propertyId,
-      metadata,
-    })
-  } catch (error) {
-    console.error("Failed to log property event:", error)
-  }
-}
-
-// Log a user-related event
-export async function logUserEvent(
-  level: LogLevel,
-  title: string,
-  details: string,
-  userId: string,
-  metadata: Record<string, any> = {},
-) {
-  try {
-    const supabase = createClient()
-
-    await supabase.from("logs").insert({
-      level,
-      category: "user",
-      title,
-      details,
-      user_id: userId,
-      metadata,
-    })
-  } catch (error) {
-    console.error("Failed to log user event:", error)
-  }
-}
-
-// Log an upload-related event
-export async function logUploadEvent(
-  level: LogLevel,
-  title: string,
-  details: string,
-  metadata: Record<string, any> = {},
-) {
-  try {
-    const supabase = createClient()
-
-    await supabase.from("logs").insert({
-      level,
-      category: "upload",
-      title,
-      details,
-      metadata,
-    })
-  } catch (error) {
-    console.error("Failed to log upload event:", error)
+    )
   }
 }
 
 // Convenience functions for common log levels
-export async function logInfo(title: string, details: string, metadata: Record<string, any> = {}) {
-  return logSystemEvent("info", title, details, metadata)
+export async function logInfo(message: string, details?: any) {
+  console.log(`[INFO] ${message}`, details)
+  return logToServer("info", message, details)
 }
 
-export async function logError(title: string, details: string, metadata: Record<string, any> = {}) {
-  return logSystemEvent("error", title, details, metadata)
+export async function logError(message: string, details?: any) {
+  console.error(`[ERROR] ${message}`, details)
+  return logToServer("error", message, details)
 }
 
-export async function logWarning(title: string, details: string, metadata: Record<string, any> = {}) {
-  return logSystemEvent("warning", title, details, metadata)
+export async function logWarning(message: string, details?: any) {
+  console.warn(`[WARNING] ${message}`, details)
+  return logToServer("warning", message, details)
 }
 
-export async function logDebug(title: string, details: string, metadata: Record<string, any> = {}) {
-  return logSystemEvent("debug", title, details, metadata)
+export async function logDebug(message: string, details?: any) {
+  console.debug(`[DEBUG] ${message}`, details)
+  return logToServer("debug", message, details)
+}
+
+// Domain-specific logging functions
+export async function logBookingEvent(message: string, level: LogLevel = "info", details?: any) {
+  return logToServer(level, message, { ...details, category: "booking" })
+}
+
+export async function logPropertyEvent(message: string, level: LogLevel = "info", details?: any) {
+  return logToServer(level, message, { ...details, category: "property" })
+}
+
+export async function logAuthEvent(message: string, level: LogLevel = "info", details?: any) {
+  return logToServer(level, message, { ...details, category: "auth" })
+}
+
+export async function logPaymentEvent(message: string, level: LogLevel = "info", details?: any) {
+  return logToServer(level, message, { ...details, category: "payment" })
+}
+
+export async function logUploadEvent(message: string, level: LogLevel = "info", details?: any) {
+  return logToServer(level, message, { ...details, category: "upload" })
+}
+
+// Legacy function for backward compatibility
+export async function logSystemEvent(message: string, level: LogLevel = "info", category = "system", details?: any) {
+  return logToServer(level, message, { ...details, category })
 }
