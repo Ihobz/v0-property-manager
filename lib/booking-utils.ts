@@ -15,26 +15,26 @@ export function normalizeBookingId(id: string | null | undefined): string | null
 
 /**
  * Safely encodes a booking ID for use in URLs
+ * Note: We're now using the raw ID directly without encoding
+ * since Next.js handles URL parameter encoding/decoding
  */
 export function encodeBookingId(id: string | null | undefined): string | null {
   const normalizedId = normalizeBookingId(id)
   if (!normalizedId) return null
 
-  return encodeURIComponent(normalizedId)
+  // Return the normalized ID directly without encoding
+  return normalizedId
 }
 
 /**
  * Safely decodes a booking ID from a URL
+ * Note: We're now assuming the ID is already decoded by Next.js
  */
 export function decodeBookingId(encodedId: string | null | undefined): string | null {
   if (!encodedId) return null
 
-  try {
-    return decodeURIComponent(encodedId)
-  } catch (error) {
-    console.error("Error decoding booking ID:", error)
-    return encodedId // Return the original if decoding fails
-  }
+  // Return the ID directly without decoding
+  return normalizeBookingId(encodedId)
 }
 
 /**

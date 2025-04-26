@@ -115,9 +115,25 @@ export default function VerifyBookingsPage() {
     }
   }
 
+  // Fixed navigation function
   const navigateToBooking = (bookingId: string) => {
-    const encodedId = encodeBookingId(bookingId)
-    router.push(`/admin/bookings/${encodedId}`)
+    try {
+      // Ensure we're using the raw ID directly without additional encoding
+      // This is important because the [id] parameter in the route will handle the decoding
+      router.push(`/admin/bookings/${bookingId}`)
+
+      toast({
+        title: "Navigating to booking",
+        description: `Opening booking ${formatBookingIdForDisplay(bookingId)}`,
+      })
+    } catch (error) {
+      console.error("Navigation error:", error)
+      toast({
+        variant: "destructive",
+        title: "Navigation Error",
+        description: "Failed to navigate to booking details",
+      })
+    }
   }
 
   if (isLoading) {

@@ -39,13 +39,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import { decodeBookingId, formatBookingIdForDisplay } from "@/lib/booking-utils"
+import { formatBookingIdForDisplay } from "@/lib/booking-utils"
 
 export default function BookingDetailsPage() {
   const params = useParams()
   const router = useRouter()
-  const encodedBookingId = params.id as string
-  const bookingId = decodeBookingId(encodedBookingId)
+  // Use the ID directly from params without additional decoding
+  const bookingId = params.id as string
 
   const [booking, setBooking] = useState<any>(null)
   const [property, setProperty] = useState<any>(null)
@@ -70,8 +70,7 @@ export default function BookingDetailsPage() {
     if (!bookingId) {
       setError("No booking ID provided")
       setDebugInfo({
-        encodedBookingId,
-        decodedBookingId: bookingId,
+        rawBookingId: bookingId,
         error: "No booking ID provided",
       })
       setIsLoading(false)
@@ -105,8 +104,7 @@ export default function BookingDetailsPage() {
 
       // Set debug info
       setDebugInfo({
-        encodedBookingId,
-        decodedBookingId: bookingId,
+        rawBookingId: bookingId,
         bookingIdType: typeof bookingId,
         bookingIdLength: bookingId.length,
         fetchedId: fetchedBooking.id,
@@ -120,8 +118,7 @@ export default function BookingDetailsPage() {
 
       // Set debug info for error case
       setDebugInfo({
-        encodedBookingId,
-        decodedBookingId: bookingId,
+        rawBookingId: bookingId,
         bookingIdType: typeof bookingId,
         bookingIdLength: bookingId ? bookingId.length : 0,
         error: err instanceof Error ? err.message : String(err),
@@ -552,7 +549,7 @@ export default function BookingDetailsPage() {
                     <pre className="text-xs bg-white p-3 rounded border overflow-auto">
                       {JSON.stringify(
                         {
-                          encodedBookingId,
+                          encodedBookingId: bookingId,
                           decodedBookingId: bookingId,
                           bookingIdType: typeof bookingId,
                           bookingIdLength: bookingId ? bookingId.length : 0,
@@ -711,4 +708,20 @@ export default function BookingDetailsPage() {
       </AlertDialog>
     </div>
   )
+}
+
+// Helper function for status colors
+function getStatusColor(status: string) {
+  switch (status) {
+    case "confirmed":
+      return "bg-green-100 text-green-800"
+    case "awaiting_payment":
+      return "bg-yellow-100 text-yellow-800"
+    case "awaiting_confirmation":
+      return "bg-blue-100 text-blue-800"
+    case "cancelled":
+      return "bg-red-100 text-red-800"
+    default:
+      return "bg-gray-100 text-gray-800"
+  }
 }
