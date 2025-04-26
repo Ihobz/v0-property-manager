@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useAuth } from "@/lib/auth-provider"
 import { useProperties } from "@/hooks/use-properties"
 import { useBookings } from "@/hooks/use-bookings"
-import { Loader2, Plus, Home, CalendarDays, Settings, Database } from "lucide-react"
+import { Loader2, Plus, Home, CalendarDays, Settings, Database, ListFilter } from "lucide-react"
 
 export default function AdminDashboard() {
   const { user, isAdmin } = useAuth()
@@ -40,6 +40,11 @@ export default function AdminDashboard() {
     pending: bookings?.filter((b) => b.status === "awaiting_confirmation").length || 0,
     confirmed: bookings?.filter((b) => b.status === "confirmed").length || 0,
     awaiting_payment: bookings?.filter((b) => b.status === "awaiting_payment").length || 0,
+  }
+
+  // Handle view booking click
+  const handleViewBooking = (bookingId: string) => {
+    router.push(`/admin/bookings/${bookingId}`)
   }
 
   return (
@@ -131,7 +136,12 @@ export default function AdminDashboard() {
               </Link>
             </Button>
             <Button asChild variant="outline" className="w-full">
-              <Link href="/properties">View All Properties</Link>
+              <Link href="/admin/properties">
+                <ListFilter className="h-4 w-4 mr-2" /> Manage Properties
+              </Link>
+            </Button>
+            <Button asChild variant="outline" className="w-full">
+              <Link href="/properties">View Public Listings</Link>
             </Button>
           </CardContent>
         </Card>
@@ -188,9 +198,14 @@ export default function AdminDashboard() {
               <p className="text-gray-600 text-sm mb-4">{property.location}</p>
               <div className="flex justify-between">
                 <span className="font-medium">${property.price}/night</span>
-                <Button asChild variant="outline" size="sm">
-                  <Link href={`/admin/properties/edit/${property.id}`}>Edit</Link>
-                </Button>
+                <div className="flex gap-2">
+                  <Button asChild variant="outline" size="sm">
+                    <Link href={`/admin/properties/edit/${property.id}`}>Edit</Link>
+                  </Button>
+                  <Button asChild variant="outline" size="sm">
+                    <Link href={`/admin/properties/calendar/${property.id}`}>Calendar</Link>
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>
@@ -236,8 +251,8 @@ export default function AdminDashboard() {
                   </span>
                 </td>
                 <td className="px-4 py-3 text-sm">
-                  <Button asChild variant="outline" size="sm">
-                    <Link href={`/admin/bookings/${booking.id}`}>View</Link>
+                  <Button variant="outline" size="sm" onClick={() => handleViewBooking(booking.id)}>
+                    View
                   </Button>
                 </td>
               </tr>

@@ -7,14 +7,13 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { useAuth } from "@/lib/auth-provider"
-import { createClientSupabaseClient } from "@/lib/supabase/client"
-import { Loader2, Search, ArrowLeft, PlusCircle, Edit, Trash, Calendar } from "lucide-react"
+import { useProperties } from "@/hooks/use-properties"
+import { Loader2, Search, ArrowLeft, Edit, Trash, Calendar, Eye } from "lucide-react"
 
-export default function PropertiesPage() {
+export default function AdminPropertiesPage() {
   const { isAdmin } = useAuth()
   const router = useRouter()
-  const [properties, setProperties] = useState<any[]>([])
-  const [isLoading, setIsLoading] = useState(true)
+  const { properties, isLoading } = useProperties()
   const [searchTerm, setSearchTerm] = useState("")
   const [filteredProperties, setFilteredProperties] = useState<any[]>([])
 
@@ -25,49 +24,22 @@ export default function PropertiesPage() {
   }, [isAdmin, router])
 
   useEffect(() => {
-    async function fetchProperties() {
-      try {
-        setIsLoading(true)
-        const supabase = createClientSupabaseClient()
-
-        const { data, error } = await supabase.from("properties").select("*").order("created_at", { ascending: false })
-
-        if (error) {
-          throw new Error(error.message)
-        }
-
-        setProperties(data || [])
-      } catch (err) {
-        console.error("Error fetching properties:", err)
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    fetchProperties()
-  }, [])
-
-  useEffect(() => {
     if (properties) {
-      let filtered = [...properties]
-
       if (searchTerm) {
         const term = searchTerm.toLowerCase()
-        filtered = filtered.filter(
-          (property) =>
-            property.title?.toLowerCase().includes(term) ||
-            property.location?.toLowerCase().includes(term) ||
-            property.description?.toLowerCase().includes(term),
+        setFilteredProperties(
+          properties.filter(
+            (property) =>
+              property.title.toLowerCase().includes(term) ||
+              property.location.toLowerCase().includes(term) ||
+              property.description.toLowerCase().includes(term),
+          ),
         )
+      } else {
+        setFilteredProperties(properties)
       }
-
-      setFilteredProperties(filtered)
     }
   }, [properties, searchTerm])
-
-  if (!isAdmin) {
-    return null // We'll redirect in the useEffect
-  }
 
   if (isLoading) {
     return (
@@ -84,7 +56,7 @@ export default function PropertiesPage() {
       </Button>
 
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
-        <h1 className="text-3xl font-bold text-gouna-blue-dark mb-4 md:mb-0">Properties</h1>
+        <h1 className="text-3xl font-bold text-gouna-blue-dark mb-4 md:mb-0">Manage Properties</h1>
 
         <div className="w-full md:w-auto flex flex-col md:flex-row gap-4">
           <div className="relative">
@@ -97,10 +69,8 @@ export default function PropertiesPage() {
             />
           </div>
 
-          <Button asChild className="bg-gouna-blue hover:bg-gouna-blue-dark">
-            <Link href="/admin/properties/new">
-              <PlusCircle className="mr-2 h-4 w-4" /> Add Property
-            </Link>
+          <Button asChild className="bg-gouna-blue hover:bg-gouna-blue-dark text-white">
+            <Link href="/admin/properties/new">Add New Property</Link>
           </Button>
         </div>
       </div>
@@ -112,11 +82,11 @@ export default function PropertiesPage() {
               <table className="w-full border-collapse">
                 <thead>
                   <tr className="bg-gray-50 border-b">
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Property</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Image</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Title</th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Location</th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Price</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Capacity</th>
-                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Featured</th>
+                    <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Bedrooms</th>
                     <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">Actions</th>
                   </tr>
                 </thead>
@@ -124,21 +94,28 @@ export default function PropertiesPage() {
                   {filteredProperties.map((property) => (
                     <tr key={property.id} className="border-b">
                       <td className="px-4 py-3">
-                        <div className="font-medium">{property.title}</div>
-                        <div className="text-xs text-gray-500">ID: {property.id.substring(0, 8)}</div>
-                      </td>
-                      <td className="px-4 py-3 text-sm">{property.location}</td>
-                      <td className="px-4 py-3 text-sm">${property.price}/night</td>
-                      <td className="px-4 py-3 text-sm">{property.guests} guests</td>
-                      <td className="px-4 py-3 text-sm">
-                        {property.is_featured ? (
-                          <span className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">Yes</span>
-                        ) : (
-                          <span className="px-2 py-1 bg-gray-100 text-gray-800 rounded-full text-xs">No</span>
-                        )}
+                        <div className="h-16 w-16 relative rounded overflow-hidden">
+                          <img
+                            src={property.images?.[0] || "/placeholder.svg?height=200&width=200"}
+                            alt={property.title}
+                            className="h-full w-full object-cover"
+                          />
+                        </div>
                       </td>
                       <td className="px-4 py-3">
+                        <div className="font-medium">{property.title}</div>
+                      </td>
+                      <td className="px-4 py-3 text-sm">{property.location}</td>
+                      <td className="px-4 py-3 text-sm font-medium">${property.price}/night</td>
+                      <td className="px-4 py-3 text-sm">{property.bedrooms}</td>
+                      <td className="px-4 py-3">
                         <div className="flex space-x-2">
+                          <Button asChild variant="outline" size="sm" className="h-8 w-8 p-0">
+                            <Link href={`/properties/${property.id}`}>
+                              <span className="sr-only">View</span>
+                              <Eye className="h-4 w-4" />
+                            </Link>
+                          </Button>
                           <Button asChild variant="outline" size="sm" className="h-8 w-8 p-0">
                             <Link href={`/admin/properties/edit/${property.id}`}>
                               <span className="sr-only">Edit</span>
@@ -146,20 +123,20 @@ export default function PropertiesPage() {
                             </Link>
                           </Button>
                           <Button asChild variant="outline" size="sm" className="h-8 w-8 p-0">
-                            <Link href={`/admin/properties/delete/${property.id}`}>
-                              <span className="sr-only">Delete</span>
-                              <Trash className="h-4 w-4" />
+                            <Link href={`/admin/properties/calendar/${property.id}`}>
+                              <span className="sr-only">Calendar</span>
+                              <Calendar className="h-4 w-4" />
                             </Link>
                           </Button>
                           <Button
                             asChild
                             variant="outline"
                             size="sm"
-                            className="h-8 w-8 p-0 text-blue-600 border-blue-600 hover:bg-blue-50"
+                            className="h-8 w-8 p-0 text-red-600 border-red-600 hover:bg-red-50"
                           >
-                            <Link href={`/admin/properties/calendar/${property.id}`}>
-                              <span className="sr-only">Calendar</span>
-                              <Calendar className="h-4 w-4" />
+                            <Link href={`/admin/properties/delete/${property.id}`}>
+                              <span className="sr-only">Delete</span>
+                              <Trash className="h-4 w-4" />
                             </Link>
                           </Button>
                         </div>
