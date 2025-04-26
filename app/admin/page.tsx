@@ -293,6 +293,14 @@ export default function AdminDashboard() {
                 <Settings className="h-4 w-4 mr-2" /> Debug Tools
               </Link>
             </Button>
+            <Button
+              variant="outline"
+              className="w-full justify-start"
+              onClick={() => router.push("/admin/debug/verify-bookings")}
+            >
+              <span className="mr-2">🔍</span>
+              Verify Booking View
+            </Button>
           </CardContent>
         </Card>
       </div>

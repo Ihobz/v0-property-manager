@@ -265,18 +265,71 @@ export async function updateBookingStatus(id: string, status: string) {
 }
 
 // Update booking cleaning fee
-export async function updateBookingCleaningFee(id: string, cleaningFee: number) {
-  try {
-    // Normalize the booking ID
-    const bookingId = normalizeBookingId(id)
+// export async function updateBookingCleaningFee(id: string, cleaningFee: number) {
+//   try {
+//     // Normalize the booking ID
+//     const bookingId = normalizeBookingId(id)
 
+//     if (!bookingId) {
+//       return { success: false, error: "No valid booking ID provided" }
+//     }
+
+//     const supabase = createServerSupabaseClient()
+
+//     // First get the current booking to calculate new total price
+//     const { data: booking, error: fetchError } = await supabase
+//       .from("bookings")
+//       .select("base_price")
+//       .eq("id", bookingId)
+//       .single()
+
+//     if (fetchError) {
+//       console.error("Error fetching booking:", fetchError)
+//       return { success: false, error: fetchError.message }
+//     }
+
+//     // Calculate new total price
+//     const totalPrice = booking.base_price + cleaningFee
+
+//     // Update booking
+//     const { error } = await supabase
+//       .from("bookings")
+//       .update({
+//         cleaning_fee: cleaningFee,
+//         total_price: totalPrice,
+//       })
+//       .eq("id", bookingId)
+
+//     if (error) {
+//       console.error("Error updating booking cleaning fee:", error)
+//       return { success: false, error: error.message }
+//     }
+
+//     // Revalidate paths
+//     revalidatePath("/admin/bookings")
+//     revalidatePath(`/admin/bookings/${bookingId}`)
+
+//     return { success: true }
+//   } catch (error) {
+//     console.error("Error in updateBookingCleaningFee:", error)
+//     return { success: false, error: "Failed to update booking cleaning fee" }
+//   }
+// }
+
+/**
+ * Updates the cleaning fee for a booking
+ */
+export async function updateBookingCleaningFee(bookingId: string, cleaningFee: number) {
+  console.log(`Updating cleaning fee for booking ID: "${bookingId}" to $${cleaningFee}`)
+
+  try {
     if (!bookingId) {
-      return { success: false, error: "No valid booking ID provided" }
+      return { success: false, error: "No booking ID provided" }
     }
 
     const supabase = createServerSupabaseClient()
 
-    // First get the current booking to calculate new total price
+    // First get the current booking to calculate the new total price
     const { data: booking, error: fetchError } = await supabase
       .from("bookings")
       .select("base_price")
@@ -284,15 +337,16 @@ export async function updateBookingCleaningFee(id: string, cleaningFee: number) 
       .single()
 
     if (fetchError) {
-      console.error("Error fetching booking:", fetchError)
+      console.error("Error fetching booking for cleaning fee update:", fetchError)
       return { success: false, error: fetchError.message }
     }
 
     // Calculate new total price
-    const totalPrice = booking.base_price + cleaningFee
+    const basePrice = booking.base_price || 0
+    const totalPrice = basePrice + cleaningFee
 
-    // Update booking
-    const { error } = await supabase
+    // Update the booking with new cleaning fee and total price
+    const { error: updateError } = await supabase
       .from("bookings")
       .update({
         cleaning_fee: cleaningFee,
@@ -300,9 +354,9 @@ export async function updateBookingCleaningFee(id: string, cleaningFee: number) 
       })
       .eq("id", bookingId)
 
-    if (error) {
-      console.error("Error updating booking cleaning fee:", error)
-      return { success: false, error: error.message }
+    if (updateError) {
+      console.error("Error updating cleaning fee:", updateError)
+      return { success: false, error: updateError.message }
     }
 
     // Revalidate paths
@@ -311,8 +365,11 @@ export async function updateBookingCleaningFee(id: string, cleaningFee: number) 
 
     return { success: true }
   } catch (error) {
-    console.error("Error in updateBookingCleaningFee:", error)
-    return { success: false, error: "Failed to update booking cleaning fee" }
+    console.error("Unexpected error updating cleaning fee:", error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "An unexpected error occurred",
+    }
   }
 }
 
@@ -414,27 +471,69 @@ export async function addTenantIdDocument(id: string, documentUrl: string) {
 }
 
 // Verify if a booking ID exists
-export async function verifyBookingId(id: string) {
-  try {
-    // Normalize the booking ID
-    const bookingId = normalizeBookingId(id)
+// export async function verifyBookingId(id: string) {
+//   try {
+//     // Normalize the booking ID
+//     const bookingId = normalizeBookingId(id)
 
+//     if (!bookingId) {
+//       return { exists: false, error: "No valid booking ID provided" }
+//     }
+
+//     const supabase = createServerSupabaseClient()
+
+//     const { data, error } = await supabase.from("bookings").select("id").eq("id", bookingId).single()
+
+//     if (error) {
+//       console.error(`Error verifying booking ID "${bookingId}":`, error)
+//       return { exists: false, error: error.message }
+//     }
+
+//     return { exists: !!data, bookingId: data?.id || null }
+//   } catch (error) {
+//     console.error("Error in verifyBookingId:", error)
+//     return { exists: false, error: "Failed to verify booking ID" }
+//   }
+// }
+
+/**
+ * Verifies if a booking ID exists in the database
+ */
+export async function verifyBookingId(bookingId: string) {
+  console.log(`Verifying booking ID: "${bookingId}"`)
+
+  try {
     if (!bookingId) {
-      return { exists: false, error: "No valid booking ID provided" }
+      return { exists: false, error: "No booking ID provided" }
     }
 
     const supabase = createServerSupabaseClient()
 
-    const { data, error } = await supabase.from("bookings").select("id").eq("id", bookingId).single()
+    // Check if the booking exists
+    const { data, error } = await supabase.from("bookings").select("id").eq("id", bookingId).maybeSingle()
 
     if (error) {
-      console.error(`Error verifying booking ID "${bookingId}":`, error)
-      return { exists: false, error: error.message }
+      console.error("Error verifying booking ID:", error)
+      return {
+        exists: false,
+        error: error.message,
+        details: {
+          code: error.code,
+          hint: error.hint,
+          details: error.details,
+        },
+      }
     }
 
-    return { exists: !!data, bookingId: data?.id || null }
+    return {
+      exists: !!data,
+      bookingId: data?.id || null,
+    }
   } catch (error) {
-    console.error("Error in verifyBookingId:", error)
-    return { exists: false, error: "Failed to verify booking ID" }
+    console.error("Unexpected error verifying booking ID:", error)
+    return {
+      exists: false,
+      error: error instanceof Error ? error.message : "An unexpected error occurred",
+    }
   }
 }
