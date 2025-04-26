@@ -1,19 +1,17 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useParams, useRouter } from "next/navigation"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { ArrowLeft, Loader2 } from "lucide-react"
-import { PropertyCalendar } from "@/components/property-calendar"
 import { useAuth } from "@/lib/auth-provider"
 import { createClientSupabaseClient } from "@/lib/supabase/client"
+import { PropertyCalendar } from "@/components/property-calendar"
 
-export default function PropertyCalendarPage() {
-  const params = useParams()
-  const router = useRouter()
-  const propertyId = params.id as string
+export default function PropertyCalendarPage({ params }: { params: { id: string } }) {
   const { isAdmin } = useAuth()
-
+  const router = useRouter()
   const [property, setProperty] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -30,11 +28,7 @@ export default function PropertyCalendarPage() {
         setIsLoading(true)
         const supabase = createClientSupabaseClient()
 
-        const { data, error } = await supabase
-          .from("properties")
-          .select("id, title, location")
-          .eq("id", propertyId)
-          .single()
+        const { data, error } = await supabase.from("properties").select("*").eq("id", params.id).single()
 
         if (error) {
           throw new Error(error.message)
@@ -49,10 +43,10 @@ export default function PropertyCalendarPage() {
       }
     }
 
-    if (propertyId) {
+    if (params.id) {
       fetchProperty()
     }
-  }, [propertyId])
+  }, [params.id])
 
   if (!isAdmin) {
     return null // We'll redirect in the useEffect
@@ -73,13 +67,15 @@ export default function PropertyCalendarPage() {
           <ArrowLeft className="mr-2 h-4 w-4" /> Back to Properties
         </Button>
 
-        <div className="bg-red-50 border border-red-200 rounded-md p-6">
-          <h2 className="text-xl font-semibold text-red-700 mb-2">Error</h2>
-          <p className="text-red-600">{error || "Property not found"}</p>
-          <Button className="mt-4 bg-red-600 hover:bg-red-700 text-white" onClick={() => window.location.reload()}>
-            Try Again
-          </Button>
-        </div>
+        <Card className="bg-red-50 border-red-200">
+          <CardContent className="p-6">
+            <h2 className="text-xl font-semibold text-red-700 mb-2">Error Loading Property</h2>
+            <p className="text-red-600">{error || "Property not found"}</p>
+            <Button className="mt-4 bg-red-600 hover:bg-red-700 text-white" onClick={() => window.location.reload()}>
+              Try Again
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     )
   }
@@ -90,12 +86,39 @@ export default function PropertyCalendarPage() {
         <ArrowLeft className="mr-2 h-4 w-4" /> Back to Properties
       </Button>
 
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gouna-blue-dark">{property.title} - Calendar</h1>
-        <p className="text-gray-600">{property.location}</p>
-      </div>
+      <Card className="mb-8">
+        <CardHeader>
+          <CardTitle className="text-2xl font-bold text-gouna-blue-dark">Calendar for {property.title}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="text-sm text-gray-500 mb-6">
+            <p>
+              Use this calendar to view bookings and block dates for this property. You can block dates when the
+              property is unavailable (e.g., for maintenance or owner stays).
+            </p>
+            <ul className="mt-2 list-disc list-inside space-y-1">
+              <li>
+                <span className="inline-block w-3 h-3 rounded-full bg-green-500 mr-2"></span>
+                <span className="font-medium">Green</span>: Confirmed bookings
+              </li>
+              <li>
+                <span className="inline-block w-3 h-3 rounded-full bg-blue-500 mr-2"></span>
+                <span className="font-medium">Blue</span>: Pending bookings (awaiting confirmation)
+              </li>
+              <li>
+                <span className="inline-block w-3 h-3 rounded-full bg-yellow-500 mr-2"></span>
+                <span className="font-medium">Yellow</span>: Awaiting payment
+              </li>
+              <li>
+                <span className="inline-block w-3 h-3 rounded-full bg-gray-500 mr-2"></span>
+                <span className="font-medium">Gray</span>: Manually blocked dates
+              </li>
+            </ul>
+          </div>
 
-      <PropertyCalendar propertyId={propertyId} />
+          <PropertyCalendar propertyId={property.id} />
+        </CardContent>
+      </Card>
     </div>
   )
 }

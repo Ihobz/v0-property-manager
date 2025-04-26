@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -177,6 +176,10 @@ export default function BookingsPage() {
     }
   }
 
+  const handleViewBooking = (bookingId: string) => {
+    router.push(`/admin/bookings/${bookingId}`)
+  }
+
   if (isLoading) {
     return (
       <div className="container py-12 flex items-center justify-center">
@@ -296,11 +299,14 @@ export default function BookingsPage() {
                       </td>
                       <td className="px-4 py-3 text-sm">
                         <div className="flex space-x-2">
-                          <Button asChild variant="outline" size="sm" className="h-8 w-8 p-0">
-                            <Link href={`/admin/bookings/${booking.id}`}>
-                              <span className="sr-only">View</span>
-                              <Eye className="h-4 w-4" />
-                            </Link>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 w-8 p-0"
+                            onClick={() => handleViewBooking(booking.id)}
+                          >
+                            <span className="sr-only">View</span>
+                            <Eye className="h-4 w-4" />
                           </Button>
 
                           {booking.status === "awaiting_confirmation" && booking.payment_proof && (
@@ -340,12 +346,10 @@ export default function BookingsPage() {
                               variant="outline"
                               size="sm"
                               className="h-8 w-8 p-0 text-amber-600 border-amber-600 hover:bg-amber-50"
-                              asChild
+                              onClick={() => handleViewBooking(booking.id)}
                             >
-                              <Link href={`/admin/bookings/${booking.id}`}>
-                                <span className="sr-only">Payment Status</span>
-                                <AlertTriangle className="h-4 w-4" />
-                              </Link>
+                              <span className="sr-only">Payment Status</span>
+                              <AlertTriangle className="h-4 w-4" />
                             </Button>
                           )}
                         </div>

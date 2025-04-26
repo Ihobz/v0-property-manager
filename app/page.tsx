@@ -18,10 +18,7 @@ export default async function Home() {
       {/* Hero Section */}
       <section className="relative h-[70vh] flex items-center justify-center">
         <div className="absolute inset-0 bg-gouna-blue-dark/60 z-10" />
-        <div
-          className="absolute inset-0 bg-cover bg-center"
-          style={{ backgroundImage: "url('/images/el-gouna-marina.png')" }}
-        />
+        <Image src="/images/el-gouna-marina.png" alt="El Gouna Marina" fill className="object-cover" priority />
         <div className="container relative z-20 text-white">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-center">
             <div className="lg:col-span-2 text-center lg:text-left">

@@ -231,3 +231,112 @@ export async function unblockPropertyDates(propertyId: string, date: string) {
     return { success: false, error: "Failed to unblock date" }
   }
 }
+
+// New functions for blocking individual dates
+export async function blockDate(propertyId: string, date: string, reason?: string) {
+  try {
+    const supabase = createServerSupabaseClient()
+
+    // Check if the date is already blocked
+    const { data: existingBlock } = await supabase
+      .from("blocked_dates")
+      .select("id")
+      .eq("property_id", propertyId)
+      .eq("date", date)
+      .single()
+
+    if (existingBlock) {
+      return { success: false, error: "Date is already blocked" }
+    }
+
+    // Check if the date has a booking
+    const { data: bookings } = await supabase
+      .from("bookings")
+      .select("id")
+      .eq("property_id", propertyId)
+      .lte("check_in", date)
+      .gte("check_out", date)
+      .not("status", "eq", "cancelled")
+
+    if (bookings && bookings.length > 0) {
+      return { success: false, error: "Date has an existing booking" }
+    }
+
+    // Block the date
+    const { error } = await supabase.from("blocked_dates").insert({
+      property_id: propertyId,
+      date,
+      reason: reason || "Manually blocked",
+    })
+
+    if (error) {
+      throw new Error(error.message)
+    }
+
+    // Revalidate paths
+    revalidatePath(`/admin/properties/calendar/${propertyId}`)
+    revalidatePath(`/properties/${propertyId}`)
+
+    return { success: true }
+  } catch (error) {
+    console.error("Error blocking date:", error)
+    return { success: false, error: "Failed to block date" }
+  }
+}
+
+export async function unblockDate(propertyId: string, date: string) {
+  try {
+    const supabase = createServerSupabaseClient()
+
+    const { error } = await supabase.from("blocked_dates").delete().eq("property_id", propertyId).eq("date", date)
+
+    if (error) {
+      throw new Error(error.message)
+    }
+
+    // Revalidate paths
+    revalidatePath(`/admin/properties/calendar/${propertyId}`)
+    revalidatePath(`/properties/${propertyId}`)
+
+    return { success: true }
+  } catch (error) {
+    console.error("Error unblocking date:", error)
+    return { success: false, error: "Failed to unblock date" }
+  }
+}
+
+export async function getPropertyAvailability(propertyId: string) {
+  try {
+    const supabase = createServerSupabaseClient()
+
+    // Get bookings
+    const { data: bookings, error: bookingsError } = await supabase
+      .from("bookings")
+      .select("id, check_in, check_out, status")
+      .eq("property_id", propertyId)
+      .not("status", "eq", "cancelled")
+
+    if (bookingsError) {
+      throw new Error(bookingsError.message)
+    }
+
+    // Get blocked dates
+    const { data: blockedDates, error: blockedDatesError } = await supabase
+      .from("blocked_dates")
+      .select("id, date, reason")
+      .eq("property_id", propertyId)
+
+    if (blockedDatesError) {
+      throw new Error(blockedDatesError.message)
+    }
+
+    return {
+      success: true,
+      bookings: bookings || [],
+      blockedDates: blockedDates || [],
+    }
+  } catch (error) {
+    console.error("Error getting property availability:", error)
+    return { success: false, error: "Failed to get property availability" }
+  }
+}
