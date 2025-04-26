@@ -8,7 +8,31 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useAuth } from "@/lib/auth-provider"
 import { useProperties } from "@/hooks/use-properties"
 import { useBookings } from "@/hooks/use-bookings"
-import { Loader2, Plus, Home, CalendarDays, Settings, Database, ListFilter } from "lucide-react"
+import {
+  Loader2,
+  Plus,
+  Home,
+  CalendarDays,
+  Settings,
+  Database,
+  ListFilter,
+  Eye,
+  CheckCircle,
+  XCircle,
+  Calendar,
+} from "lucide-react"
+import { updateBookingStatus } from "@/app/api/bookings/actions"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { toast } from "@/components/ui/use-toast"
 
 export default function AdminDashboard() {
   const { user, isAdmin } = useAuth()
@@ -16,6 +40,12 @@ export default function AdminDashboard() {
   const { properties, isLoading: propertiesLoading } = useProperties()
   const { bookings, isLoading: bookingsLoading } = useBookings()
   const [isLoading, setIsLoading] = useState(true)
+
+  // State for confirmation dialogs
+  const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false)
+  const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false)
+  const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null)
+  const [isProcessing, setIsProcessing] = useState(false)
 
   useEffect(() => {
     // Check if user is authenticated and admin
@@ -45,6 +75,92 @@ export default function AdminDashboard() {
   // Handle view booking click
   const handleViewBooking = (bookingId: string) => {
     router.push(`/admin/bookings/${bookingId}`)
+  }
+
+  // Handle view property calendar click
+  const handleViewPropertyCalendar = (propertyId: string) => {
+    router.push(`/admin/properties/calendar/${propertyId}`)
+  }
+
+  const handleConfirmBooking = async () => {
+    if (!selectedBookingId) return
+
+    setIsProcessing(true)
+    try {
+      const result = await updateBookingStatus(selectedBookingId, "confirmed")
+      if (result.success) {
+        toast({
+          title: "Booking confirmed",
+          description: "The booking has been confirmed successfully.",
+        })
+        window.location.reload() // Reload to update the UI
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to confirm booking. Please try again.",
+        })
+      }
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "An unexpected error occurred.",
+      })
+    } finally {
+      setIsProcessing(false)
+      setIsConfirmDialogOpen(false)
+      setSelectedBookingId(null)
+    }
+  }
+
+  const handleCancelBooking = async () => {
+    if (!selectedBookingId) return
+
+    setIsProcessing(true)
+    try {
+      const result = await updateBookingStatus(selectedBookingId, "cancelled")
+      if (result.success) {
+        toast({
+          title: "Booking cancelled",
+          description: "The booking has been cancelled successfully.",
+        })
+        window.location.reload() // Reload to update the UI
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to cancel booking. Please try again.",
+        })
+      }
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "An unexpected error occurred.",
+      })
+    } finally {
+      setIsProcessing(false)
+      setIsCancelDialogOpen(false)
+      setSelectedBookingId(null)
+    }
+  }
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "confirmed":
+        return "bg-green-100 text-green-800"
+      case "awaiting_payment":
+        return "bg-yellow-100 text-yellow-800"
+      case "awaiting_confirmation":
+        return "bg-blue-100 text-blue-800"
+      case "cancelled":
+        return "bg-red-100 text-red-800"
+      case "blocked":
+        return "bg-gray-100 text-gray-800"
+      default:
+        return "bg-gray-100 text-gray-800"
+    }
   }
 
   return (
@@ -230,7 +346,10 @@ export default function AdminDashboard() {
             {bookings?.slice(0, 5).map((booking) => (
               <tr key={booking.id} className="border-b">
                 <td className="px-4 py-3 text-sm">{booking.id.substring(0, 8)}</td>
-                <td className="px-4 py-3 text-sm">{booking.properties?.title || "Unknown Property"}</td>
+                <td className="px-4 py-3 text-sm">
+                  <div>{booking.properties?.title || "Unknown Property"}</div>
+                  <div className="text-xs text-gray-500">{booking.properties?.location}</div>
+                </td>
                 <td className="px-4 py-3 text-sm">{booking.name}</td>
                 <td className="px-4 py-3 text-sm">
                   {new Date(booking.check_in).toLocaleDateString()} - {new Date(booking.check_out).toLocaleDateString()}
@@ -251,15 +370,120 @@ export default function AdminDashboard() {
                   </span>
                 </td>
                 <td className="px-4 py-3 text-sm">
-                  <Button variant="outline" size="sm" onClick={() => handleViewBooking(booking.id)}>
-                    View
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 px-3"
+                      onClick={() => handleViewBooking(booking.id)}
+                    >
+                      <Eye className="h-4 w-4 mr-1" /> View
+                    </Button>
+
+                    {booking.status === "awaiting_confirmation" && booking.payment_proof && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 px-3 text-green-600 border-green-600 hover:bg-green-50"
+                        onClick={() => {
+                          setSelectedBookingId(booking.id)
+                          setIsConfirmDialogOpen(true)
+                        }}
+                      >
+                        <CheckCircle className="h-4 w-4 mr-1" /> Confirm
+                      </Button>
+                    )}
+
+                    {(booking.status === "awaiting_confirmation" ||
+                      booking.status === "awaiting_payment" ||
+                      booking.status === "confirmed") && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 px-3 text-red-600 border-red-600 hover:bg-red-50"
+                        onClick={() => {
+                          setSelectedBookingId(booking.id)
+                          setIsCancelDialogOpen(true)
+                        }}
+                      >
+                        <XCircle className="h-4 w-4 mr-1" /> Cancel
+                      </Button>
+                    )}
+
+                    {booking.property_id && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 px-3 text-blue-600 border-blue-600 hover:bg-blue-50"
+                        onClick={() => handleViewPropertyCalendar(booking.property_id)}
+                      >
+                        <Calendar className="h-4 w-4 mr-1" /> Calendar
+                      </Button>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      {/* Confirm Booking Dialog */}
+      <AlertDialog open={isConfirmDialogOpen} onOpenChange={setIsConfirmDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Booking</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to confirm this booking? This will notify the guest that their booking has been
+              confirmed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isProcessing}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmBooking}
+              disabled={isProcessing}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {isProcessing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...
+                </>
+              ) : (
+                "Confirm Booking"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Cancel Booking Dialog */}
+      <AlertDialog open={isCancelDialogOpen} onOpenChange={setIsCancelDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel Booking</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to cancel this booking? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isProcessing}>No, keep it</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleCancelBooking}
+              disabled={isProcessing}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {isProcessing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...
+                </>
+              ) : (
+                "Yes, cancel booking"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

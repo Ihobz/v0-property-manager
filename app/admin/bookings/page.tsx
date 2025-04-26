@@ -7,9 +7,8 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { useAuth } from "@/lib/auth-provider"
-import { getBookings } from "@/app/api/bookings/actions"
-import { Loader2, Search, ArrowLeft, CheckCircle, XCircle, Eye, AlertTriangle } from "lucide-react"
-import { updateBookingStatus } from "@/app/api/bookings/actions"
+import { getBookings, updateBookingStatus } from "@/app/api/bookings/actions"
+import { Loader2, Search, ArrowLeft, CheckCircle, XCircle, Eye, Calendar } from "lucide-react"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -180,6 +179,10 @@ export default function BookingsPage() {
     router.push(`/admin/bookings/${bookingId}`)
   }
 
+  const handleViewPropertyCalendar = (propertyId: string) => {
+    router.push(`/admin/properties/calendar/${propertyId}`)
+  }
+
   if (isLoading) {
     return (
       <div className="container py-12 flex items-center justify-center">
@@ -282,7 +285,10 @@ export default function BookingsPage() {
                   {filteredBookings.map((booking) => (
                     <tr key={booking.id} className="border-b">
                       <td className="px-4 py-3 text-sm">{booking.id.substring(0, 8)}</td>
-                      <td className="px-4 py-3 text-sm">{booking.properties?.title || "Unknown Property"}</td>
+                      <td className="px-4 py-3 text-sm">
+                        <div>{booking.properties?.title || "Unknown Property"}</div>
+                        <div className="text-xs text-gray-500">{booking.properties?.location}</div>
+                      </td>
                       <td className="px-4 py-3 text-sm">
                         <div>{booking.name}</div>
                         <div className="text-xs text-gray-500">{booking.email}</div>
@@ -298,29 +304,27 @@ export default function BookingsPage() {
                         </span>
                       </td>
                       <td className="px-4 py-3 text-sm">
-                        <div className="flex space-x-2">
+                        <div className="flex flex-wrap gap-2">
                           <Button
                             variant="outline"
                             size="sm"
-                            className="h-8 w-8 p-0"
+                            className="h-8 px-3"
                             onClick={() => handleViewBooking(booking.id)}
                           >
-                            <span className="sr-only">View</span>
-                            <Eye className="h-4 w-4" />
+                            <Eye className="h-4 w-4 mr-1" /> View
                           </Button>
 
                           {booking.status === "awaiting_confirmation" && booking.payment_proof && (
                             <Button
                               variant="outline"
                               size="sm"
-                              className="h-8 w-8 p-0 text-green-600 border-green-600 hover:bg-green-50"
+                              className="h-8 px-3 text-green-600 border-green-600 hover:bg-green-50"
                               onClick={() => {
                                 setSelectedBookingId(booking.id)
                                 setIsConfirmDialogOpen(true)
                               }}
                             >
-                              <span className="sr-only">Confirm</span>
-                              <CheckCircle className="h-4 w-4" />
+                              <CheckCircle className="h-4 w-4 mr-1" /> Confirm
                             </Button>
                           )}
 
@@ -330,26 +334,24 @@ export default function BookingsPage() {
                             <Button
                               variant="outline"
                               size="sm"
-                              className="h-8 w-8 p-0 text-red-600 border-red-600 hover:bg-red-50"
+                              className="h-8 px-3 text-red-600 border-red-600 hover:bg-red-50"
                               onClick={() => {
                                 setSelectedBookingId(booking.id)
                                 setIsCancelDialogOpen(true)
                               }}
                             >
-                              <span className="sr-only">Cancel</span>
-                              <XCircle className="h-4 w-4" />
+                              <XCircle className="h-4 w-4 mr-1" /> Cancel
                             </Button>
                           )}
 
-                          {booking.status === "awaiting_payment" && (
+                          {booking.property_id && (
                             <Button
                               variant="outline"
                               size="sm"
-                              className="h-8 w-8 p-0 text-amber-600 border-amber-600 hover:bg-amber-50"
-                              onClick={() => handleViewBooking(booking.id)}
+                              className="h-8 px-3 text-blue-600 border-blue-600 hover:bg-blue-50"
+                              onClick={() => handleViewPropertyCalendar(booking.property_id)}
                             >
-                              <span className="sr-only">Payment Status</span>
-                              <AlertTriangle className="h-4 w-4" />
+                              <Calendar className="h-4 w-4 mr-1" /> Calendar
                             </Button>
                           )}
                         </div>
