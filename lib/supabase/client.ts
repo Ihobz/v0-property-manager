@@ -6,8 +6,16 @@ let supabaseClient: ReturnType<typeof createClientComponentClient<Database>> | n
 
 export function getSupabaseBrowserClient() {
   if (!supabaseClient) {
-    // Use environment variables directly instead of the config object
-    supabaseClient = createClientComponentClient<Database>()
+    try {
+      // Use environment variables directly instead of the config object
+      supabaseClient = createClientComponentClient<Database>({
+        supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL,
+        supabaseKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+      })
+    } catch (error) {
+      console.error("Error initializing Supabase client:", error)
+      throw error
+    }
   }
   return supabaseClient
 }

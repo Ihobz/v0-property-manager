@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { getBookings, getBookingById } from "@/app/api/bookings/actions"
 
-export function useBookings() {
+export function useBookings(shouldFetch = true) {
   const [bookings, setBookings] = useState<any[] | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<any>(null)
@@ -27,13 +27,15 @@ export function useBookings() {
       }
     }
 
-    loadBookings()
-  }, [])
+    if (shouldFetch) {
+      loadBookings()
+    }
+  }, [shouldFetch])
 
   return { bookings, isLoading, error }
 }
 
-export function useBooking(id: string) {
+export function useBooking(id: string, shouldFetch = true) {
   const [booking, setBooking] = useState<any | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<any>(null)
@@ -57,10 +59,10 @@ export function useBooking(id: string) {
       }
     }
 
-    if (id) {
+    if (id && shouldFetch) {
       loadBooking()
     }
-  }, [id])
+  }, [id, shouldFetch])
 
   return { booking, isLoading, error }
 }

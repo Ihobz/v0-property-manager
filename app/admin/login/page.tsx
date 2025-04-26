@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -19,13 +19,14 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const router = useRouter()
-  const { user } = useAuth()
+  const { user, isAdmin } = useAuth()
 
-  // If user is already logged in, redirect to admin dashboard
-  if (user) {
-    router.push("/admin")
-    return null
-  }
+  useEffect(() => {
+    // If user is already logged in and is admin, redirect to admin dashboard
+    if (user && isAdmin) {
+      router.push("/admin")
+    }
+  }, [user, isAdmin, router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -44,8 +45,14 @@ export default function LoginPage() {
         throw error
       }
 
-      // Redirect to admin dashboard
-      router.push("/admin")
+      // Check if the user is an admin
+      if (email === "admin@elgounarentals.com" || email === "monzer@elgounarentals.com") {
+        // Redirect to admin dashboard
+        router.push("/admin")
+      } else {
+        // Not an admin, show error
+        throw new Error("You do not have admin privileges")
+      }
     } catch (err: any) {
       console.error("Error signing in:", err)
       setError(err.message || "Failed to sign in")

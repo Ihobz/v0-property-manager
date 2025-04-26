@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { getFeaturedProperties, getProperties } from "@/app/api/properties/actions"
 import { Bed, Bath, Users, ArrowRight } from "lucide-react"
+import { BookingStatusCheck } from "@/components/booking-status-check"
 
 export default async function Home() {
   const { properties: allProperties } = await getProperties()
@@ -21,14 +22,28 @@ export default async function Home() {
           className="absolute inset-0 bg-cover bg-center"
           style={{ backgroundImage: "url('/placeholder.svg?height=1080&width=1920')" }}
         />
-        <div className="container relative z-20 text-white text-center">
-          <h1 className="text-4xl md:text-6xl font-bold mb-4">Discover Your Perfect El Gouna Getaway</h1>
-          <p className="text-xl md:text-2xl mb-8 max-w-3xl mx-auto">
-            Luxury villas, beachfront apartments, and more in Egypt's premier resort town
-          </p>
-          <Button asChild size="lg" className="bg-gouna-sand hover:bg-gouna-sand-dark text-white">
-            <Link href="/properties">Browse Properties</Link>
-          </Button>
+        <div className="container relative z-20 text-white">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-center">
+            <div className="lg:col-span-2 text-center lg:text-left">
+              <h1 className="text-4xl md:text-6xl font-bold mb-4">Discover Your Perfect El Gouna Getaway</h1>
+              <p className="text-xl md:text-2xl mb-8 max-w-3xl">
+                Luxury villas, beachfront apartments, and more in Egypt's premier resort town
+              </p>
+              <Button asChild size="lg" className="bg-gouna-sand hover:bg-gouna-sand-dark text-white">
+                <Link href="/properties">Browse Properties</Link>
+              </Button>
+            </div>
+            <div className="hidden lg:block">
+              <BookingStatusCheck />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Mobile Booking Status Check */}
+      <section className="py-8 bg-gray-50 lg:hidden">
+        <div className="container">
+          <BookingStatusCheck />
         </div>
       </section>
 

@@ -26,6 +26,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [session, setSession] = useState<Session | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [isAdmin, setIsAdmin] = useState(false)
 
   const supabase = getSupabaseBrowserClient()
 
@@ -34,6 +35,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
       setUser(session?.user ?? null)
+
+      // Check if user is admin
+      if (session?.user?.email) {
+        const email = session.user.email
+        setIsAdmin(email === "admin@elgounarentals.com" || email === "monzer@elgounarentals.com")
+      } else {
+        setIsAdmin(false)
+      }
+
       setIsLoading(false)
     })
 
@@ -43,6 +53,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session)
       setUser(session?.user ?? null)
+
+      // Check if user is admin
+      if (session?.user?.email) {
+        const email = session.user.email
+        setIsAdmin(email === "admin@elgounarentals.com" || email === "monzer@elgounarentals.com")
+      } else {
+        setIsAdmin(false)
+      }
+
       setIsLoading(false)
     })
 
@@ -51,12 +70,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, [supabase.auth])
 
-  // Check if user is admin
-  const isAdmin =
-    !!user?.email && (user.email === "admin@elgounarentals.com" || user.email === "monzer@elgounarentals.com")
-
   const signOut = async () => {
     await supabase.auth.signOut()
+    setUser(null)
+    setSession(null)
+    setIsAdmin(false)
   }
 
   return <AuthContext.Provider value={{ user, session, isLoading, isAdmin, signOut }}>{children}</AuthContext.Provider>

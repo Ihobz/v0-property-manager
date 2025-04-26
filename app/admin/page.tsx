@@ -13,20 +13,29 @@ import { Loader2, Plus, Home, CalendarDays, Settings, Database } from "lucide-re
 export default function AdminDashboard() {
   const { user, isAdmin } = useAuth()
   const router = useRouter()
-  const { properties, isLoading: propertiesLoading } = useProperties()
-  const { bookings, isLoading: bookingsLoading } = useBookings()
   const [isLoading, setIsLoading] = useState(true)
+
+  // Defer data fetching until we confirm the user is authenticated
+  const [shouldFetchData, setShouldFetchData] = useState(false)
+  const { properties, isLoading: propertiesLoading } = useProperties(shouldFetchData)
+  const { bookings, isLoading: bookingsLoading } = useBookings(shouldFetchData)
 
   useEffect(() => {
     // Check if user is authenticated and admin
-    if (!isLoading && !isAdmin) {
+    if (!user) {
+      // If no user, redirect to login
       router.push("/admin/login")
+    } else if (!isAdmin) {
+      // If user is not admin, redirect to home
+      router.push("/")
     } else {
+      // User is authenticated and admin, start fetching data
+      setShouldFetchData(true)
       setIsLoading(false)
     }
-  }, [user, isAdmin, router, isLoading])
+  }, [user, isAdmin, router])
 
-  if (isLoading || propertiesLoading || bookingsLoading) {
+  if (isLoading || !shouldFetchData || propertiesLoading || bookingsLoading) {
     return (
       <div className="container py-12 flex items-center justify-center min-h-[calc(100vh-8rem)]">
         <Loader2 className="h-8 w-8 animate-spin text-gouna-blue" />
