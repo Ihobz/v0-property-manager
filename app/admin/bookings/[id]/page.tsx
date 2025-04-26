@@ -10,35 +10,208 @@ import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { bookings, properties } from "@/lib/data"
-import { Calendar, Users, DollarSign, CheckCircle, XCircle, ArrowLeft, Download, User, Bed, Bath } from "lucide-react"
-// Change the import from auth-context to auth-provider
+import {
+  Calendar,
+  Users,
+  DollarSign,
+  CheckCircle,
+  XCircle,
+  ArrowLeft,
+  Download,
+  User,
+  Bed,
+  Bath,
+  Loader2,
+} from "lucide-react"
 import { useAuth } from "@/lib/auth-provider"
+import { toast } from "@/components/ui/use-toast"
+import { updateBookingStatus } from "@/app/api/bookings/actions"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+
+// Function to fetch a single booking by ID
+async function getBookingById(id: string) {
+  try {
+    const response = await fetch(`/api/bookings/${id}`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+      },
+    })
+
+    if (!response.ok) {
+      throw new Error(`Error: ${response.status}`)
+    }
+
+    const data = await response.json()
+    return { booking: data.booking, error: null }
+  } catch (error) {
+    console.error("Failed to fetch booking:", error)
+    return { booking: null, error: error instanceof Error ? error.message : "Failed to fetch booking" }
+  }
+}
 
 export default function BookingDetailsPage() {
   const params = useParams()
   const router = useRouter()
   const bookingId = params.id as string
-  const booking = bookings.find((b) => b.id === bookingId)
-  const property = booking ? properties.find((p) => p.id === booking.propertyId) : null
 
-  const [cleaningFee, setCleaningFee] = useState(booking?.cleaningFee || 0)
+  const [booking, setBooking] = useState<any>(null)
+  const [property, setProperty] = useState<any>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [cleaningFee, setCleaningFee] = useState(0)
   const [confirmationMessage, setConfirmationMessage] = useState("")
+
+  // State for confirmation dialogs
+  const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false)
+  const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false)
+  const [isProcessing, setIsProcessing] = useState(false)
 
   const { isAuthenticated } = useAuth()
 
   useEffect(() => {
     if (!isAuthenticated) {
       router.push("/admin/login")
+      return
     }
-  }, [isAuthenticated, router])
 
-  if (!booking || !property) {
-    return <div className="container py-12">Booking not found</div>
+    async function loadBookingData() {
+      setIsLoading(true)
+      try {
+        const { booking: fetchedBooking, error: fetchError } = await getBookingById(bookingId)
+
+        if (fetchError) {
+          throw new Error(fetchError)
+        }
+
+        if (!fetchedBooking) {
+          throw new Error("Booking not found")
+        }
+
+        setBooking(fetchedBooking)
+        setProperty(fetchedBooking.properties)
+        setCleaningFee(fetchedBooking.cleaning_fee || 0)
+      } catch (err) {
+        console.error("Error loading booking:", err)
+        setError(err instanceof Error ? err.message : "Failed to load booking details")
+      } finally {
+        setIsLoading(false)
+      }
+    }
+
+    loadBookingData()
+  }, [isAuthenticated, router, bookingId])
+
+  const handleConfirmBooking = async () => {
+    setIsProcessing(true)
+    try {
+      const result = await updateBookingStatus(bookingId, "confirmed")
+      if (result.success) {
+        toast({
+          title: "Booking confirmed",
+          description: "The booking has been confirmed successfully.",
+        })
+        setBooking({ ...booking, status: "confirmed" })
+        setConfirmationMessage("Booking confirmed successfully!")
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to confirm booking. Please try again.",
+        })
+      }
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "An unexpected error occurred.",
+      })
+    } finally {
+      setIsProcessing(false)
+      setIsConfirmDialogOpen(false)
+    }
   }
 
-  if (!isAuthenticated) {
-    return null // We'll redirect in the useEffect
+  const handleCancelBooking = async () => {
+    setIsProcessing(true)
+    try {
+      const result = await updateBookingStatus(bookingId, "cancelled")
+      if (result.success) {
+        toast({
+          title: "Booking cancelled",
+          description: "The booking has been cancelled successfully.",
+        })
+        setBooking({ ...booking, status: "cancelled" })
+        setConfirmationMessage("Booking cancelled successfully!")
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: "Failed to cancel booking. Please try again.",
+        })
+      }
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "An unexpected error occurred.",
+      })
+    } finally {
+      setIsProcessing(false)
+      setIsCancelDialogOpen(false)
+    }
+  }
+
+  const handleUpdateCleaningFee = async () => {
+    // In a real app, this would update the cleaning fee in the database
+    toast({
+      title: "Cleaning fee updated",
+      description: "The cleaning fee has been updated successfully.",
+    })
+  }
+
+  if (isLoading) {
+    return (
+      <div className="container py-12 flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-gouna-blue" />
+      </div>
+    )
+  }
+
+  if (error || !booking) {
+    return (
+      <div className="container py-12">
+        <Button
+          variant="ghost"
+          className="mb-6 text-gouna-blue hover:text-gouna-blue-dark"
+          onClick={() => router.back()}
+        >
+          <ArrowLeft className="h-4 w-4 mr-2" /> Back to Bookings
+        </Button>
+
+        <Card className="bg-red-50 border-red-200">
+          <CardContent className="p-6">
+            <h2 className="text-xl font-semibold text-red-700 mb-2">Error Loading Booking</h2>
+            <p className="text-red-600">{error || "Booking not found"}</p>
+            <Button
+              className="mt-4 bg-red-600 hover:bg-red-700 text-white"
+              onClick={() => router.push("/admin/bookings")}
+            >
+              Return to Bookings
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   const getStatusColor = (status: string) => {
@@ -56,16 +229,6 @@ export default function BookingDetailsPage() {
     }
   }
 
-  const handleConfirmBooking = () => {
-    // In a real app, this would update the booking status in the database
-    setConfirmationMessage("Booking confirmed successfully!")
-  }
-
-  const handleRejectBooking = () => {
-    // In a real app, this would update the booking status in the database
-    setConfirmationMessage("Booking rejected successfully!")
-  }
-
   return (
     <div className="container py-12">
       <Button variant="ghost" className="mb-6 text-gouna-blue hover:text-gouna-blue-dark" onClick={() => router.back()}>
@@ -74,8 +237,8 @@ export default function BookingDetailsPage() {
 
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
         <div>
-          <h1 className="text-3xl font-bold text-gouna-blue-dark">Booking #{booking.id}</h1>
-          <p className="text-gray-600">Created on {new Date(booking.createdAt).toLocaleDateString()}</p>
+          <h1 className="text-3xl font-bold text-gouna-blue-dark">Booking #{booking.id.substring(0, 8)}</h1>
+          <p className="text-gray-600">Created on {new Date(booking.created_at).toLocaleDateString()}</p>
         </div>
         <Badge className={`${getStatusColor(booking.status)} text-sm px-3 py-1 mt-2 md:mt-0`}>
           {booking.status.replace("_", " ").charAt(0).toUpperCase() + booking.status.replace("_", " ").slice(1)}
@@ -104,8 +267,8 @@ export default function BookingDetailsPage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                       <h3 className="text-sm font-medium text-gray-500 mb-1">Property</h3>
-                      <p className="font-semibold">{property.title}</p>
-                      <p className="text-sm text-gray-600">{property.location}</p>
+                      <p className="font-semibold">{property?.title || "Unknown Property"}</p>
+                      <p className="text-sm text-gray-600">{property?.location}</p>
                     </div>
 
                     <div>
@@ -123,7 +286,7 @@ export default function BookingDetailsPage() {
                       <Calendar className="h-5 w-5 text-gouna-blue mr-2 mt-0.5" />
                       <div>
                         <h3 className="text-sm font-medium text-gray-500 mb-1">Check-in</h3>
-                        <p className="font-semibold">{booking.checkIn}</p>
+                        <p className="font-semibold">{new Date(booking.check_in).toLocaleDateString()}</p>
                       </div>
                     </div>
 
@@ -131,7 +294,7 @@ export default function BookingDetailsPage() {
                       <Calendar className="h-5 w-5 text-gouna-blue mr-2 mt-0.5" />
                       <div>
                         <h3 className="text-sm font-medium text-gray-500 mb-1">Check-out</h3>
-                        <p className="font-semibold">{booking.checkOut}</p>
+                        <p className="font-semibold">{new Date(booking.check_out).toLocaleDateString()}</p>
                       </div>
                     </div>
 
@@ -151,16 +314,16 @@ export default function BookingDetailsPage() {
                     <div className="space-y-2">
                       <div className="flex justify-between">
                         <span>Base Price</span>
-                        <span>${booking.basePrice}</span>
+                        <span>${booking.base_price}</span>
                       </div>
                       <div className="flex justify-between">
                         <span>Cleaning Fee</span>
-                        <span>${booking.cleaningFee || 0}</span>
+                        <span>${booking.cleaning_fee || 0}</span>
                       </div>
                       <Separator className="my-2" />
                       <div className="flex justify-between font-semibold">
                         <span>Total</span>
-                        <span>${booking.totalPrice}</span>
+                        <span>${booking.total_price}</span>
                       </div>
                     </div>
                   </div>
@@ -174,12 +337,12 @@ export default function BookingDetailsPage() {
                   <CardTitle className="text-gouna-blue-dark">Payment Information</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-6">
-                  {booking.paymentProof ? (
+                  {booking.payment_proof ? (
                     <div>
                       <h3 className="text-sm font-medium text-gray-500 mb-3">Payment Proof</h3>
                       <div className="relative h-80 rounded-md overflow-hidden border">
                         <Image
-                          src={booking.paymentProof || "/placeholder.svg"}
+                          src={booking.payment_proof || "/placeholder.svg"}
                           alt="Payment Proof"
                           fill
                           className="object-contain"
@@ -213,7 +376,12 @@ export default function BookingDetailsPage() {
                           onChange={(e) => setCleaningFee(Number(e.target.value))}
                         />
                       </div>
-                      <Button className="bg-gouna-blue hover:bg-gouna-blue-dark text-white">Update Fee</Button>
+                      <Button
+                        className="bg-gouna-blue hover:bg-gouna-blue-dark text-white"
+                        onClick={handleUpdateCleaningFee}
+                      >
+                        Update Fee
+                      </Button>
                     </div>
                   </div>
                 </CardContent>
@@ -226,9 +394,9 @@ export default function BookingDetailsPage() {
                   <CardTitle className="text-gouna-blue-dark">Tenant Documents</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {booking.tenantIds && booking.tenantIds.length > 0 ? (
+                  {booking.tenant_ids && booking.tenant_ids.length > 0 ? (
                     <div className="space-y-6">
-                      {booking.tenantIds.map((id, index) => (
+                      {booking.tenant_ids.map((id: string, index: number) => (
                         <div key={index}>
                           <h3 className="text-sm font-medium text-gray-500 mb-3">Tenant ID #{index + 1}</h3>
                           <div className="relative h-80 rounded-md overflow-hidden border">
@@ -268,13 +436,16 @@ export default function BookingDetailsPage() {
             <CardContent className="space-y-4">
               {booking.status === "awaiting_confirmation" && (
                 <>
-                  <Button className="w-full bg-green-600 hover:bg-green-700 text-white" onClick={handleConfirmBooking}>
+                  <Button
+                    className="w-full bg-green-600 hover:bg-green-700 text-white"
+                    onClick={() => setIsConfirmDialogOpen(true)}
+                  >
                     <CheckCircle className="h-4 w-4 mr-2" /> Confirm Booking
                   </Button>
                   <Button
                     variant="outline"
                     className="w-full text-red-600 border-red-600 hover:bg-red-50"
-                    onClick={handleRejectBooking}
+                    onClick={() => setIsCancelDialogOpen(true)}
                   >
                     <XCircle className="h-4 w-4 mr-2" /> Reject Booking
                   </Button>
@@ -282,7 +453,11 @@ export default function BookingDetailsPage() {
               )}
 
               {booking.status === "confirmed" && (
-                <Button variant="outline" className="w-full text-red-600 border-red-600 hover:bg-red-50">
+                <Button
+                  variant="outline"
+                  className="w-full text-red-600 border-red-600 hover:bg-red-50"
+                  onClick={() => setIsCancelDialogOpen(true)}
+                >
                   <XCircle className="h-4 w-4 mr-2" /> Cancel Booking
                 </Button>
               )}
@@ -307,32 +482,89 @@ export default function BookingDetailsPage() {
             <CardContent>
               <div className="relative h-48 rounded-md overflow-hidden mb-4">
                 <Image
-                  src={property.images[0] || "/placeholder.svg"}
-                  alt={property.title}
+                  src={property?.images?.[0] || "/placeholder.svg"}
+                  alt={property?.title || "Property"}
                   fill
                   className="object-cover"
                 />
               </div>
-              <h3 className="font-semibold mb-1">{property.title}</h3>
-              <p className="text-sm text-gray-600 mb-4">{property.location}</p>
+              <h3 className="font-semibold mb-1">{property?.title || "Unknown Property"}</h3>
+              <p className="text-sm text-gray-600 mb-4">{property?.location}</p>
               <div className="grid grid-cols-3 gap-2 text-sm text-gray-600">
                 <div className="flex flex-col items-center p-2 bg-gray-50 rounded">
                   <Bed className="h-4 w-4 mb-1" />
-                  <span>{property.bedrooms}</span>
+                  <span>{property?.bedrooms || "N/A"}</span>
                 </div>
                 <div className="flex flex-col items-center p-2 bg-gray-50 rounded">
                   <Bath className="h-4 w-4 mb-1" />
-                  <span>{property.bathrooms}</span>
+                  <span>{property?.bathrooms || "N/A"}</span>
                 </div>
                 <div className="flex flex-col items-center p-2 bg-gray-50 rounded">
                   <Users className="h-4 w-4 mb-1" />
-                  <span>{property.guests}</span>
+                  <span>{property?.guests || "N/A"}</span>
                 </div>
               </div>
             </CardContent>
           </Card>
         </div>
       </div>
+
+      {/* Confirm Booking Dialog */}
+      <AlertDialog open={isConfirmDialogOpen} onOpenChange={setIsConfirmDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Booking</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to confirm this booking? This will notify the guest that their booking has been
+              confirmed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isProcessing}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmBooking}
+              disabled={isProcessing}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {isProcessing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...
+                </>
+              ) : (
+                "Confirm Booking"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Cancel Booking Dialog */}
+      <AlertDialog open={isCancelDialogOpen} onOpenChange={setIsCancelDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancel Booking</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to cancel this booking? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isProcessing}>No, keep it</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleCancelBooking}
+              disabled={isProcessing}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {isProcessing ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...
+                </>
+              ) : (
+                "Yes, cancel booking"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
