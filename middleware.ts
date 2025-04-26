@@ -20,6 +20,34 @@ export async function middleware(req: NextRequest) {
   // Refresh session if expired - required for Server Components
   await supabase.auth.getSession()
 
+  // Don't redirect for API routes or static assets
+  const url = req.nextUrl.clone()
+  const isApiRoute = url.pathname.startsWith("/api/")
+  const isStaticAsset = url.pathname.match(/\.(js|css|png|jpg|jpeg|gif|ico|svg)$/)
+
+  if (isApiRoute || isStaticAsset) {
+    return res
+  }
+
+  // Check if the route is an admin route
+  const isAdminRoute =
+    url.pathname.startsWith("/admin") &&
+    !url.pathname.startsWith("/admin/login") &&
+    !url.pathname.startsWith("/admin-login")
+
+  if (isAdminRoute) {
+    // Get the session
+    const {
+      data: { session },
+    } = await supabase.auth.getSession()
+
+    // If no session and trying to access admin routes, redirect to login
+    if (!session) {
+      url.pathname = "/admin/login"
+      return NextResponse.redirect(url)
+    }
+  }
+
   return res
 }
 

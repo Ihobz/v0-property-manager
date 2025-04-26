@@ -528,21 +528,15 @@ export default function AdminDashboard() {
             <CardDescription>Manage your rental properties</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <a href="/admin/properties/new" className="block w-full">
-              <Button className="w-full">
-                <Plus className="h-4 w-4 mr-2" /> Add New Property
-              </Button>
-            </a>
-            <a href="/admin/properties" className="block w-full">
-              <Button variant="outline" className="w-full">
-                <ListFilter className="h-4 w-4 mr-2" /> Manage Properties
-              </Button>
-            </a>
-            <a href="/properties" className="block w-full">
-              <Button variant="outline" className="w-full">
-                View Public Listings
-              </Button>
-            </a>
+            <Button className="w-full" onClick={() => router.push("/admin/properties/new")}>
+              <Plus className="h-4 w-4 mr-2" /> Add New Property
+            </Button>
+            <Button variant="outline" className="w-full" onClick={() => router.push("/admin/properties")}>
+              <ListFilter className="h-4 w-4 mr-2" /> Manage Properties
+            </Button>
+            <Button variant="outline" className="w-full" onClick={() => router.push("/properties")}>
+              View Public Listings
+            </Button>
           </CardContent>
         </Card>
 
@@ -552,14 +546,16 @@ export default function AdminDashboard() {
             <CardDescription>Manage your property bookings</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <a href="/admin/bookings" className="block w-full">
-              <Button className="w-full">View All Bookings</Button>
-            </a>
-            <a href="/admin/bookings?status=awaiting_confirmation" className="block w-full">
-              <Button variant="outline" className="w-full">
-                View Pending Bookings
-              </Button>
-            </a>
+            <Button className="w-full" onClick={() => router.push("/admin/bookings")}>
+              View All Bookings
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => router.push("/admin/bookings?status=awaiting_confirmation")}
+            >
+              View Pending Bookings
+            </Button>
           </CardContent>
         </Card>
 
@@ -569,22 +565,20 @@ export default function AdminDashboard() {
             <CardDescription>Admin tools and utilities</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <a href="/admin/seed" className="block w-full">
-              <Button className="w-full">
-                <Database className="h-4 w-4 mr-2" /> Seed Database
-              </Button>
-            </a>
-            <a href="/admin/debug" className="block w-full">
-              <Button variant="outline" className="w-full">
-                <Settings className="h-4 w-4 mr-2" /> Debug Tools
-              </Button>
-            </a>
-            <a href="/admin/debug/verify-bookings" className="block w-full">
-              <Button variant="outline" className="w-full justify-start">
-                <span className="mr-2">🔍</span>
-                Verify Booking View
-              </Button>
-            </a>
+            <Button className="w-full" onClick={() => router.push("/admin/seed")}>
+              <Database className="h-4 w-4 mr-2" /> Seed Database
+            </Button>
+            <Button variant="outline" className="w-full" onClick={() => router.push("/admin/debug")}>
+              <Settings className="h-4 w-4 mr-2" /> Debug Tools
+            </Button>
+            <Button
+              variant="outline"
+              className="w-full justify-start"
+              onClick={() => router.push("/admin/debug/verify-bookings")}
+            >
+              <span className="mr-2">🔍</span>
+              Verify Booking View
+            </Button>
           </CardContent>
         </Card>
       </div>
@@ -607,16 +601,20 @@ export default function AdminDashboard() {
               <div className="flex justify-between">
                 <span className="font-medium">${property.price}/night</span>
                 <div className="flex gap-2">
-                  <a href={`/admin/properties/edit/${property.id}`} className="inline-block">
-                    <Button variant="outline" size="sm">
-                      Edit
-                    </Button>
-                  </a>
-                  <a href={`/admin/properties/calendar/${property.id}`} className="inline-block">
-                    <Button variant="outline" size="sm">
-                      Calendar
-                    </Button>
-                  </a>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => router.push(`/admin/properties/edit/${property.id}`)}
+                  >
+                    Edit
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => router.push(`/admin/properties/calendar/${property.id}`)}
+                  >
+                    Calendar
+                  </Button>
                 </div>
               </div>
             </CardContent>
@@ -657,11 +655,14 @@ export default function AdminDashboard() {
                 </td>
                 <td className="px-4 py-3 text-sm">
                   <div className="flex flex-wrap gap-2">
-                    <a href={`/admin/bookings/${booking.id}`} className="inline-block">
-                      <Button variant="outline" size="sm" className="h-8 px-3" type="button">
-                        <Eye className="h-4 w-4 mr-1" /> View
-                      </Button>
-                    </a>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 px-3"
+                      onClick={() => router.push(`/admin/bookings/${booking.id}`)}
+                    >
+                      <Eye className="h-4 w-4 mr-1" /> View
+                    </Button>
 
                     {booking.status === "awaiting_confirmation" && booking.payment_proof && (
                       <Button
@@ -694,16 +695,14 @@ export default function AdminDashboard() {
                     )}
 
                     {booking.property_id && (
-                      <a href={`/admin/properties/calendar/${booking.property_id}`} className="inline-block">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-8 px-3 text-blue-600 border-blue-600 hover:bg-blue-50"
-                          type="button"
-                        >
-                          <Calendar className="h-4 w-4 mr-1" /> Calendar
-                        </Button>
-                      </a>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 px-3 text-blue-600 border-blue-600 hover:bg-blue-50"
+                        onClick={() => router.push(`/admin/properties/calendar/${booking.property_id}`)}
+                      >
+                        <Calendar className="h-4 w-4 mr-1" /> Calendar
+                      </Button>
                     )}
                   </div>
                 </td>

@@ -1,66 +1,34 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { getProperties, getPropertyById } from "@/app/api/properties/actions"
+import { getProperties } from "@/app/api/properties/actions"
 
 export function useProperties() {
-  const [properties, setProperties] = useState<any[] | null>(null)
+  const [properties, setProperties] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<any>(null)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    async function loadProperties() {
+    async function fetchProperties() {
       try {
         setIsLoading(true)
-        const { properties, error } = await getProperties()
+        const { properties: fetchedProperties, error: fetchError } = await getProperties()
 
-        if (error) {
-          throw error
+        if (fetchError) {
+          throw new Error(fetchError)
         }
 
-        setProperties(properties)
+        setProperties(fetchedProperties || [])
       } catch (err) {
-        setError(err)
-        console.error("Error loading properties:", err)
+        console.error("Error fetching properties:", err)
+        setError(err instanceof Error ? err.message : "Failed to load properties")
       } finally {
         setIsLoading(false)
       }
     }
 
-    loadProperties()
+    fetchProperties()
   }, [])
 
   return { properties, isLoading, error }
-}
-
-export function useProperty(id: string) {
-  const [property, setProperty] = useState<any | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<any>(null)
-
-  useEffect(() => {
-    async function loadProperty() {
-      try {
-        setIsLoading(true)
-        const { property, error } = await getPropertyById(id)
-
-        if (error) {
-          throw error
-        }
-
-        setProperty(property)
-      } catch (err) {
-        setError(err)
-        console.error("Error loading property:", err)
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    if (id) {
-      loadProperty()
-    }
-  }, [id])
-
-  return { property, isLoading, error }
 }

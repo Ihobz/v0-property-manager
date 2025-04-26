@@ -29,6 +29,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const supabase = getSupabaseBrowserClient()
 
+  // Update the useEffect hook to better handle authentication state
   useEffect(() => {
     // Check for active session
     supabase.auth.getSession().then(({ data: { session } }) => {

@@ -181,6 +181,7 @@ export default function BookingsPage() {
     }
   }
 
+  // Update the handleViewBooking function
   const handleViewBooking = async (bookingId: string) => {
     try {
       setIsVerifyingBooking(true)
@@ -212,8 +213,8 @@ export default function BookingsPage() {
         return
       }
 
-      // If verification passes, navigate to the booking details page using direct URL
-      window.location.href = `/admin/bookings/${bookingId}`
+      // If verification passes, navigate to the booking details page
+      router.push(`/admin/bookings/${bookingId}`)
     } catch (error) {
       console.error("Error in handleViewBooking:", error)
       setVerificationError("An unexpected error occurred")
@@ -227,8 +228,9 @@ export default function BookingsPage() {
     }
   }
 
+  // Update the handleViewPropertyCalendar function
   const handleViewPropertyCalendar = (propertyId: string) => {
-    window.location.href = `/admin/properties/calendar/${propertyId}`
+    router.push(`/admin/properties/calendar/${propertyId}`)
   }
 
   if (isLoading) {
@@ -349,12 +351,14 @@ export default function BookingsPage() {
                       </td>
                       <td className="px-4 py-3 text-sm">
                         <div className="flex flex-wrap gap-2">
-                          {/* Use a direct HTML anchor tag for navigation */}
-                          <a href={`/admin/bookings/${booking.id}`} className="inline-block">
-                            <Button variant="outline" size="sm" className="h-8 px-3" type="button">
-                              <Eye className="h-4 w-4 mr-1" /> View
-                            </Button>
-                          </a>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 px-3"
+                            onClick={() => handleViewBooking(booking.id)}
+                          >
+                            <Eye className="h-4 w-4 mr-1" /> View
+                          </Button>
 
                           {booking.status === "awaiting_confirmation" && booking.payment_proof && (
                             <Button
@@ -387,16 +391,14 @@ export default function BookingsPage() {
                           )}
 
                           {booking.property_id && (
-                            <a href={`/admin/properties/calendar/${booking.property_id}`} className="inline-block">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-8 px-3 text-blue-600 border-blue-600 hover:bg-blue-50"
-                                type="button"
-                              >
-                                <Calendar className="h-4 w-4 mr-1" /> Calendar
-                              </Button>
-                            </a>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-8 px-3 text-blue-600 border-blue-600 hover:bg-blue-50"
+                              onClick={() => handleViewPropertyCalendar(booking.property_id)}
+                            >
+                              <Calendar className="h-4 w-4 mr-1" /> Calendar
+                            </Button>
                           )}
                         </div>
                       </td>

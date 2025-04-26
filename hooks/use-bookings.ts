@@ -1,66 +1,35 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { getBookings, getBookingById } from "@/app/api/bookings/actions"
+import { getBookings } from "@/app/api/bookings/actions"
 
 export function useBookings() {
-  const [bookings, setBookings] = useState<any[] | null>(null)
+  const [bookings, setBookings] = useState<any[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<any>(null)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    async function loadBookings() {
+    async function fetchBookings() {
       try {
         setIsLoading(true)
-        const { bookings, error } = await getBookings()
+        const { bookings: fetchedBookings, error: fetchError } = await getBookings()
 
-        if (error) {
-          throw error
+        if (fetchError) {
+          throw new Error(fetchError)
         }
 
-        setBookings(bookings)
+        setBookings(fetchedBookings || [])
+        console.log("Fetched bookings:", fetchedBookings)
       } catch (err) {
-        setError(err)
-        console.error("Error loading bookings:", err)
+        console.error("Error fetching bookings:", err)
+        setError(err instanceof Error ? err.message : "Failed to load bookings")
       } finally {
         setIsLoading(false)
       }
     }
 
-    loadBookings()
+    fetchBookings()
   }, [])
 
   return { bookings, isLoading, error }
-}
-
-export function useBooking(id: string) {
-  const [booking, setBooking] = useState<any | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<any>(null)
-
-  useEffect(() => {
-    async function loadBooking() {
-      try {
-        setIsLoading(true)
-        const { booking, error } = await getBookingById(id)
-
-        if (error) {
-          throw error
-        }
-
-        setBooking(booking)
-      } catch (err) {
-        setError(err)
-        console.error("Error loading booking:", err)
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
-    if (id) {
-      loadBooking()
-    }
-  }, [id])
-
-  return { booking, isLoading, error }
 }
