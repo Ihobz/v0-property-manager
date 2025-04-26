@@ -22,6 +22,7 @@ import {
   Bed,
   Bath,
   Loader2,
+  AlertTriangle,
 } from "lucide-react"
 import { useAuth } from "@/lib/auth-provider"
 import { toast } from "@/components/ui/use-toast"
@@ -37,21 +38,27 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 
-// Function to fetch a single booking by ID
+// Function to fetch a single booking by ID with improved error handling
 async function getBookingById(id: string) {
   try {
+    console.log(`Fetching booking with ID: ${id}`)
+
     const response = await fetch(`/api/bookings/${id}`, {
       method: "GET",
       headers: {
         "Content-Type": "application/json",
       },
+      cache: "no-store", // Ensure we always get fresh data
     })
 
     if (!response.ok) {
-      throw new Error(`Error: ${response.status}`)
+      const errorData = await response.json().catch(() => ({}))
+      console.error(`Error response: ${response.status}`, errorData)
+      throw new Error(`Error ${response.status}: ${errorData.error || response.statusText}`)
     }
 
     const data = await response.json()
+    console.log("Booking data received:", data)
     return { booking: data.booking, error: null }
   } catch (error) {
     console.error("Failed to fetch booking:", error)
@@ -70,6 +77,7 @@ export default function BookingDetailsPage() {
   const [error, setError] = useState<string | null>(null)
   const [cleaningFee, setCleaningFee] = useState(0)
   const [confirmationMessage, setConfirmationMessage] = useState("")
+  const [retryCount, setRetryCount] = useState(0)
 
   // State for confirmation dialogs
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false)
@@ -78,38 +86,54 @@ export default function BookingDetailsPage() {
 
   const { isAuthenticated } = useAuth()
 
+  // Function to load booking data with retry capability
+  const loadBookingData = async () => {
+    if (!bookingId) {
+      setError("No booking ID provided")
+      setIsLoading(false)
+      return
+    }
+
+    setIsLoading(true)
+    setError(null)
+
+    try {
+      console.log(`Loading booking data for ID: ${bookingId} (Attempt ${retryCount + 1})`)
+      const { booking: fetchedBooking, error: fetchError } = await getBookingById(bookingId)
+
+      if (fetchError) {
+        throw new Error(fetchError)
+      }
+
+      if (!fetchedBooking) {
+        throw new Error("Booking not found")
+      }
+
+      console.log("Setting booking data:", fetchedBooking)
+      setBooking(fetchedBooking)
+      setProperty(fetchedBooking.properties)
+      setCleaningFee(fetchedBooking.cleaning_fee || 0)
+      setRetryCount(0) // Reset retry count on success
+    } catch (err) {
+      console.error("Error loading booking:", err)
+      setError(err instanceof Error ? err.message : "Failed to load booking details")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   useEffect(() => {
     if (!isAuthenticated) {
       router.push("/admin/login")
       return
     }
 
-    async function loadBookingData() {
-      setIsLoading(true)
-      try {
-        const { booking: fetchedBooking, error: fetchError } = await getBookingById(bookingId)
-
-        if (fetchError) {
-          throw new Error(fetchError)
-        }
-
-        if (!fetchedBooking) {
-          throw new Error("Booking not found")
-        }
-
-        setBooking(fetchedBooking)
-        setProperty(fetchedBooking.properties)
-        setCleaningFee(fetchedBooking.cleaning_fee || 0)
-      } catch (err) {
-        console.error("Error loading booking:", err)
-        setError(err instanceof Error ? err.message : "Failed to load booking details")
-      } finally {
-        setIsLoading(false)
-      }
-    }
-
     loadBookingData()
-  }, [isAuthenticated, router, bookingId])
+  }, [isAuthenticated, router, bookingId, retryCount])
+
+  const handleRetry = () => {
+    setRetryCount((prev) => prev + 1)
+  }
 
   const handleConfirmBooking = async () => {
     setIsProcessing(true)
@@ -126,10 +150,11 @@ export default function BookingDetailsPage() {
         toast({
           variant: "destructive",
           title: "Error",
-          description: "Failed to confirm booking. Please try again.",
+          description: result.error || "Failed to confirm booking. Please try again.",
         })
       }
     } catch (error) {
+      console.error("Error confirming booking:", error)
       toast({
         variant: "destructive",
         title: "Error",
@@ -156,10 +181,11 @@ export default function BookingDetailsPage() {
         toast({
           variant: "destructive",
           title: "Error",
-          description: "Failed to cancel booking. Please try again.",
+          description: result.error || "Failed to cancel booking. Please try again.",
         })
       }
     } catch (error) {
+      console.error("Error cancelling booking:", error)
       toast({
         variant: "destructive",
         title: "Error",
@@ -181,8 +207,9 @@ export default function BookingDetailsPage() {
 
   if (isLoading) {
     return (
-      <div className="container py-12 flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-gouna-blue" />
+      <div className="container py-12 flex flex-col items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-gouna-blue mb-4" />
+        <p className="text-gray-600">Loading booking details...</p>
       </div>
     )
   }
@@ -200,14 +227,19 @@ export default function BookingDetailsPage() {
 
         <Card className="bg-red-50 border-red-200">
           <CardContent className="p-6">
-            <h2 className="text-xl font-semibold text-red-700 mb-2">Error Loading Booking</h2>
-            <p className="text-red-600">{error || "Booking not found"}</p>
-            <Button
-              className="mt-4 bg-red-600 hover:bg-red-700 text-white"
-              onClick={() => router.push("/admin/bookings")}
-            >
-              Return to Bookings
-            </Button>
+            <div className="flex items-center mb-4">
+              <AlertTriangle className="h-6 w-6 text-red-600 mr-2" />
+              <h2 className="text-xl font-semibold text-red-700">Error Loading Booking</h2>
+            </div>
+            <p className="text-red-600 mb-4">{error || "Booking not found"}</p>
+            <div className="flex gap-4">
+              <Button className="bg-red-600 hover:bg-red-700 text-white" onClick={handleRetry}>
+                Try Again
+              </Button>
+              <Button variant="outline" onClick={() => router.push("/admin/bookings")}>
+                Return to Bookings
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -267,7 +299,7 @@ export default function BookingDetailsPage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                       <h3 className="text-sm font-medium text-gray-500 mb-1">Property</h3>
-                      <p className="font-semibold">{property?.title || "Unknown Property"}</p>
+                      <p className="font-semibold">{property?.name || "Unknown Property"}</p>
                       <p className="text-sm text-gray-600">{property?.location}</p>
                     </div>
 
@@ -483,12 +515,12 @@ export default function BookingDetailsPage() {
               <div className="relative h-48 rounded-md overflow-hidden mb-4">
                 <Image
                   src={property?.images?.[0] || "/placeholder.svg"}
-                  alt={property?.title || "Property"}
+                  alt={property?.name || "Property"}
                   fill
                   className="object-cover"
                 />
               </div>
-              <h3 className="font-semibold mb-1">{property?.title || "Unknown Property"}</h3>
+              <h3 className="font-semibold mb-1">{property?.name || "Unknown Property"}</h3>
               <p className="text-sm text-gray-600 mb-4">{property?.location}</p>
               <div className="grid grid-cols-3 gap-2 text-sm text-gray-600">
                 <div className="flex flex-col items-center p-2 bg-gray-50 rounded">
