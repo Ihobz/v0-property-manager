@@ -15,6 +15,7 @@ export default function ResetDataPage() {
   const { toast } = useToast()
   const [confirmation, setConfirmation] = useState("")
   const [isResetting, setIsResetting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const handleReset = async () => {
     if (confirmation !== "DELETE ALL DATA") {
@@ -27,6 +28,7 @@ export default function ResetDataPage() {
     }
 
     setIsResetting(true)
+    setError(null)
 
     try {
       const result = await resetAllData()
@@ -35,10 +37,14 @@ export default function ResetDataPage() {
         toast({
           title: "Data reset successful",
           description: "All properties and bookings have been deleted",
-          variant: "default",
         })
-        router.push("/admin")
+        // Wait a moment before redirecting to allow the toast to be seen
+        setTimeout(() => {
+          router.push("/admin")
+          router.refresh()
+        }, 1500)
       } else {
+        setError(result.error || "An unknown error occurred")
         toast({
           title: "Reset failed",
           description: result.error || "An unknown error occurred",
@@ -46,9 +52,11 @@ export default function ResetDataPage() {
         })
       }
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "An unknown error occurred"
+      setError(errorMessage)
       toast({
         title: "Reset failed",
-        description: error instanceof Error ? error.message : "An unknown error occurred",
+        description: errorMessage,
         variant: "destructive",
       })
     } finally {
@@ -88,6 +96,12 @@ export default function ResetDataPage() {
                 className="border-red-300"
                 placeholder="Type confirmation phrase here"
               />
+
+              {error && (
+                <div className="p-4 bg-red-50 border border-red-200 rounded-md">
+                  <p className="text-red-800">Error: {error}</p>
+                </div>
+              )}
             </div>
           </CardContent>
           <CardFooter className="flex justify-between">
