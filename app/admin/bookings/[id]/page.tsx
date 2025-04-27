@@ -112,7 +112,7 @@ export default function BookingDetailsPage() {
 
       // Extract property from the booking response
       // The property might be in property or property_data depending on the query
-      const propertyData = fetchedBooking.properties || fetchedBooking.property || fetchedBooking.property_data
+      const propertyData = fetchedBooking.property || null
       setProperty(propertyData)
       setCleaningFee(fetchedBooking.cleaning_fee || 0)
       setRetryCount(0) // Reset retry count on success
@@ -376,7 +376,7 @@ export default function BookingDetailsPage() {
   }
 
   // Safely access property data
-  const propertyTitle = property?.title || property?.name || "Unknown Property"
+  const propertyTitle = property?.title || "Unknown Property"
   const propertyLocation = property?.location || "Unknown Location"
   const propertyBedrooms = property?.bedrooms || 0
   const propertyBathrooms = property?.bathrooms || 0

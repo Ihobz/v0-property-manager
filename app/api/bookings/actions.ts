@@ -297,56 +297,101 @@ export async function getBookings() {
   }
 }
 
-// Function to get a booking by ID
+// Function to get a booking by ID with enhanced debugging and error handling
 export async function getBookingById(id: string) {
   try {
-    logInfo(`Fetching booking ${id}`)
-    const supabase = createClient()
+    // Log the attempt to fetch the booking
+    logInfo(`Fetching booking ${id}`, { bookingId: id })
 
-    // Use maybeSingle() instead of single() to avoid the error when no rows are returned
-    const { data: booking, error } = await supabase
+    // Use admin client to bypass RLS policies
+    const supabase = createAdminSupabaseClient()
+
+    // Log the query we're about to execute
+    console.log(`Executing query for booking ID: ${id}`)
+
+    // First, check if the booking exists in the database
+    const { data: bookingExists, error: existsError } = await supabase
       .from("bookings")
-      .select(`
-        *,
-        property:property_id (
-          id,
-          title,
-          name,
-          location,
-          bedrooms,
-          bathrooms,
-          guests,
-          images
-        )
-      `)
+      .select("id")
       .eq("id", id)
       .maybeSingle()
 
-    if (error) {
-      logError(`Error fetching booking ${id}`, error)
+    if (existsError) {
+      logError(`Error checking if booking ${id} exists`, existsError)
       return {
         booking: null,
-        error: `Error fetching booking: ${error.message}`,
-        details: error,
+        error: `Error checking booking: ${existsError.message}`,
+        details: {
+          error: existsError,
+          query: "SELECT id FROM bookings WHERE id = ?",
+          params: [id],
+        },
       }
     }
 
-    if (!booking) {
-      logError(`Booking ${id} not found`)
+    if (!bookingExists) {
+      logError(`Booking ${id} not found during existence check`)
       return {
         booking: null,
         error: "Booking not found",
-        details: { id },
+        details: {
+          id,
+          message: "No booking with this ID exists in the database",
+          suggestion: "Verify the booking ID is correct",
+        },
       }
     }
 
-    return { booking, error: null }
+    // Now fetch the full booking details
+    const { data: booking, error: bookingError } = await supabase.from("bookings").select("*").eq("id", id).single()
+
+    if (bookingError) {
+      logError(`Error fetching booking ${id} details`, bookingError)
+      return {
+        booking: null,
+        error: `Error fetching booking details: ${bookingError.message}`,
+        details: bookingError,
+      }
+    }
+
+    // Then, get the property details separately
+    let property = null
+    if (booking.property_id) {
+      const { data: propertyData, error: propertyError } = await supabase
+        .from("properties")
+        // Replace this line:
+        // .select("id, title, name, location, bedrooms, bathrooms, guests, images")
+        // With this line that removes the "name" column:
+        .select("id, title, location, bedrooms, bathrooms, guests")
+        .eq("id", booking.property_id)
+        .maybeSingle()
+
+      if (propertyError) {
+        logError(`Error fetching property for booking ${id}`, propertyError)
+        // Continue without property data
+      } else {
+        property = propertyData
+      }
+    }
+
+    // Return the booking with property data
+    return {
+      booking: {
+        ...booking,
+        property: property,
+      },
+      error: null,
+    }
   } catch (error: any) {
-    logError(`Error in getBookingById for ${id}`, error)
+    logError(`Unexpected error in getBookingById for ${id}`, error)
     return {
       booking: null,
       error: `Failed to retrieve booking: ${error.message}`,
-      details: error,
+      details: {
+        error: error.message,
+        stack: error.stack,
+        bookingId: id,
+      },
     }
   }
 }
