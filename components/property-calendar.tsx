@@ -57,7 +57,6 @@ import {
   differenceInDays,
 } from "date-fns"
 import type { DateRange } from "react-day-picker"
-import { cn } from "@/lib/utils"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Badge } from "@/components/ui/badge"
 import { updateBookingStatus } from "@/app/api/bookings/actions"
@@ -826,32 +825,49 @@ export function PropertyCalendar({ propertyId }: PropertyCalendarProps) {
                   month={month}
                   onMonthChange={setMonth}
                   className="rounded-md border-0"
-                  classNames={{
-                    months: "flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0",
-                    month: "space-y-4",
-                    caption: "flex justify-center pt-1 relative items-center",
-                    caption_label: "text-sm font-medium",
-                    nav: "space-x-1 flex items-center",
-                    nav_button: cn("h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100"),
-                    nav_button_previous: "absolute left-1",
-                    nav_button_next: "absolute right-1",
-                    table: "w-full border-collapse space-y-1",
-                    head_row: "flex w-full justify-between",
-                    head_cell: "text-muted-foreground rounded-md w-9 font-normal text-[0.8rem] text-center",
-                    row: "flex w-full mt-2 justify-between",
-                    cell: cn(
-                      "relative p-0 text-center text-sm focus-within:relative focus-within:z-20 [&:has([aria-selected])]:bg-accent w-9",
-                      blockMode === "range" ? "h-9 cursor-pointer" : "h-9",
-                    ),
-                    day: cn("h-9 w-9 p-0 font-normal aria-selected:opacity-100"),
-                    day_range_end: "day-range-end",
-                    day_selected:
-                      "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground",
-                    day_today: "bg-accent text-accent-foreground",
-                    day_outside: "text-muted-foreground opacity-50",
-                    day_disabled: "text-muted-foreground opacity-50",
-                    day_range_middle: "aria-selected:bg-accent aria-selected:text-accent-foreground",
-                    day_hidden: "invisible",
+                  styles={{
+                    months: { display: "flex", flexDirection: "row" },
+                    month: { margin: "0 1rem" },
+                    caption: { display: "flex", justifyContent: "center", padding: "0.5rem", position: "relative" },
+                    caption_label: { fontSize: "0.875rem", fontWeight: "500" },
+                    nav: { display: "flex", gap: "0.25rem" },
+                    nav_button: { opacity: "0.5", "&:hover": { opacity: "1" } },
+                    nav_button_previous: { position: "absolute", left: "0.25rem" },
+                    nav_button_next: { position: "absolute", right: "0.25rem" },
+                    table: { width: "100%", borderCollapse: "separate", borderSpacing: "0" },
+                    head_row: { display: "grid", gridTemplateColumns: "repeat(7, 1fr)", width: "100%" },
+                    head_cell: {
+                      width: "100%",
+                      textAlign: "center",
+                      fontSize: "0.75rem",
+                      fontWeight: "normal",
+                      color: "var(--muted-foreground)",
+                    },
+                    row: { display: "grid", gridTemplateColumns: "repeat(7, 1fr)", width: "100%", marginTop: "0.5rem" },
+                    cell: {
+                      position: "relative",
+                      textAlign: "center",
+                      fontSize: "0.875rem",
+                      padding: "0",
+                      "&:has([aria-selected])": { backgroundColor: "var(--accent)" },
+                    },
+                    day: {
+                      height: "2.25rem",
+                      width: "2.25rem",
+                      fontSize: "0.875rem",
+                      fontWeight: "normal",
+                      opacity: "1",
+                      margin: "0 auto",
+                    },
+                    day_selected: {
+                      backgroundColor: "var(--primary)",
+                      color: "var(--primary-foreground)",
+                      "&:hover": { backgroundColor: "var(--primary)", color: "var(--primary-foreground)" },
+                    },
+                    day_today: { backgroundColor: "var(--accent)", color: "var(--accent-foreground)" },
+                    day_outside: { opacity: "0.5", color: "var(--muted-foreground)" },
+                    day_disabled: { opacity: "0.5", color: "var(--muted-foreground)" },
+                    day_hidden: { visibility: "hidden" },
                   }}
                   components={{
                     Day: ({ date, ...props }) => {
