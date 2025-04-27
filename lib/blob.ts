@@ -1,98 +1,156 @@
 import { put } from "@vercel/blob"
-import { logUploadEvent } from "@/lib/logging"
+import { nanoid } from "nanoid"
+import { logInfo, logError } from "@/lib/logging"
 
+/**
+ * Generic file upload function
+ * @param file The file to upload
+ * @param folder The folder to upload to (default: "uploads")
+ * @returns Object containing success status, URL, and error message if any
+ */
 export async function uploadFile(file: File, folder = "uploads") {
   try {
-    await logUploadEvent("Starting file upload", "info", { fileName: file.name, fileSize: file.size, folder })
+    logInfo("Blob", `Starting upload of ${file.name} to ${folder}`)
 
     // Create a unique filename with timestamp
-    const timestamp = new Date().getTime()
-    const filename = `${folder}/${timestamp}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-")
+    const uniqueId = nanoid(6)
+    const fileName = `${folder}/${timestamp}-${uniqueId}-${file.name}`
 
     // Upload to Vercel Blob
-    const blob = await put(filename, file, {
+    const { url } = await put(fileName, file, {
       access: "public",
     })
 
-    await logUploadEvent("File uploaded successfully", "info", { url: blob.url, folder })
+    logInfo("Blob", `Successfully uploaded ${file.name} to ${url}`)
 
-    return { success: true, url: blob.url, filename: blob.url.split("/").pop() }
+    return {
+      success: true,
+      url,
+      error: null,
+    }
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error"
-    await logUploadEvent("Error uploading file", "error", { error: errorMessage, folder })
-    console.error(`Error uploading file to ${folder}:`, error)
-    return { success: false, error: errorMessage }
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    logError("Blob", `Error uploading file ${file.name}: ${errorMessage}`)
+
+    return {
+      success: false,
+      url: null,
+      error: `Failed to upload file: ${errorMessage}`,
+    }
   }
 }
 
-export async function uploadPaymentProof(file: File) {
+/**
+ * Upload payment proof document
+ * @param file The file to upload
+ * @param bookingId The booking ID
+ * @returns Object containing success status, URL, and error message if any
+ */
+export async function uploadPaymentProof(file: File, bookingId: string) {
   try {
-    await logUploadEvent("Starting payment proof upload", "info", { fileName: file.name, fileSize: file.size })
+    logInfo("Blob", `Starting payment proof upload for booking ${bookingId}`)
 
     // Create a unique filename with timestamp
-    const timestamp = new Date().getTime()
-    const filename = `payment-proofs/${timestamp}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-")
+    const fileName = `payment-proofs/${bookingId}-${timestamp}-${file.name}`
 
     // Upload to Vercel Blob
-    const blob = await put(filename, file, {
+    const { url } = await put(fileName, file, {
       access: "public",
     })
 
-    await logUploadEvent("Payment proof uploaded successfully", "info", { url: blob.url })
+    logInfo("Blob", `Successfully uploaded payment proof for booking ${bookingId} to ${url}`)
 
-    return { success: true, url: blob.url, filename: blob.url.split("/").pop() }
+    return {
+      success: true,
+      url,
+      error: null,
+    }
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error"
-    await logUploadEvent("Error uploading payment proof", "error", { error: errorMessage })
-    console.error("Error uploading payment proof:", error)
-    return { success: false, error: errorMessage }
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    logError("Blob", `Error uploading payment proof for booking ${bookingId}: ${errorMessage}`)
+
+    return {
+      success: false,
+      url: null,
+      error: `Failed to upload payment proof: ${errorMessage}`,
+    }
   }
 }
 
-export async function uploadTenantDocument(file: File) {
+/**
+ * Upload tenant document (ID, passport, etc.)
+ * @param file The file to upload
+ * @param bookingId The booking ID
+ * @returns Object containing success status, URL, and error message if any
+ */
+export async function uploadTenantDocument(file: File, bookingId: string) {
   try {
-    await logUploadEvent("Starting tenant document upload", "info", { fileName: file.name, fileSize: file.size })
+    logInfo("Blob", `Starting tenant document upload for booking ${bookingId}`)
 
     // Create a unique filename with timestamp
-    const timestamp = new Date().getTime()
-    const filename = `tenant-ids/${timestamp}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-")
+    const fileName = `tenant-documents/${bookingId}-${timestamp}-${file.name}`
 
     // Upload to Vercel Blob
-    const blob = await put(filename, file, {
+    const { url } = await put(fileName, file, {
       access: "public",
     })
 
-    await logUploadEvent("Tenant document uploaded successfully", "info", { url: blob.url })
+    logInfo("Blob", `Successfully uploaded tenant document for booking ${bookingId} to ${url}`)
 
-    return { success: true, url: blob.url, filename: blob.url.split("/").pop() }
+    return {
+      success: true,
+      url,
+      error: null,
+    }
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error"
-    await logUploadEvent("Error uploading tenant document", "error", { error: errorMessage })
-    console.error("Error uploading tenant document:", error)
-    return { success: false, error: errorMessage }
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    logError("Blob", `Error uploading tenant document for booking ${bookingId}: ${errorMessage}`)
+
+    return {
+      success: false,
+      url: null,
+      error: `Failed to upload tenant document: ${errorMessage}`,
+    }
   }
 }
 
-export async function uploadPropertyImage(file: File) {
+/**
+ * Upload property image
+ * @param file The file to upload
+ * @param propertyId The property ID
+ * @returns Object containing success status, URL, and error message if any
+ */
+export async function uploadPropertyImage(file: File, propertyId: string) {
   try {
-    await logUploadEvent("Starting property image upload", "info", { fileName: file.name, fileSize: file.size })
+    logInfo("Blob", `Starting property image upload for property ${propertyId}`)
 
     // Create a unique filename with timestamp
-    const timestamp = new Date().getTime()
-    const filename = `properties/${timestamp}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-")
+    const fileName = `property-images/${propertyId}-${timestamp}-${file.name}`
 
     // Upload to Vercel Blob
-    const blob = await put(filename, file, {
+    const { url } = await put(fileName, file, {
       access: "public",
     })
 
-    await logUploadEvent("Property image uploaded successfully", "info", { url: blob.url })
+    logInfo("Blob", `Successfully uploaded image for property ${propertyId} to ${url}`)
 
-    return { success: true, url: blob.url, filename: blob.url.split("/").pop() }
+    return {
+      success: true,
+      url,
+      error: null,
+    }
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error"
-    await logUploadEvent("Error uploading property image", "error", { error: errorMessage })
-    console.error("Error uploading property image:", error)
-    return { success: false, error: errorMessage }
+    const errorMessage = error instanceof Error ? error.message : String(error)
+    logError("Blob", `Error uploading image for property ${propertyId}: ${errorMessage}`)
+
+    return {
+      success: false,
+      url: null,
+      error: `Failed to upload property image: ${errorMessage}`,
+    }
   }
 }

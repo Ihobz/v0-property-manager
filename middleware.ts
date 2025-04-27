@@ -43,9 +43,13 @@ export async function middleware(req: NextRequest) {
 
     // If no session and trying to access admin routes, redirect to login
     if (!session) {
+      console.log("No session found, redirecting to login")
       url.pathname = "/admin/login"
       return NextResponse.redirect(url)
     }
+
+    // Log successful access
+    console.log("Session found, allowing access to admin route")
   }
 
   return res

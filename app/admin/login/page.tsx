@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label"
 import { AlertCircle, Loader2 } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { useRouter } from "next/navigation"
+import { logInfo, logError } from "@/lib/logging"
 
 export default function AdminLoginPage() {
   const [email, setEmail] = useState("")
@@ -23,6 +24,7 @@ export default function AdminLoginPage() {
   // Redirect to admin dashboard if already authenticated and is admin
   useEffect(() => {
     if (isAuthenticated && isAdmin) {
+      logInfo("Login", "User already authenticated, redirecting to admin dashboard")
       router.push("/admin")
     }
   }, [isAuthenticated, isAdmin, router])
@@ -33,14 +35,23 @@ export default function AdminLoginPage() {
     setIsLoading(true)
 
     try {
+      logInfo("Login", `Attempting login for: ${email}`)
       const { success, error } = await login(email, password)
+
       if (success) {
-        router.push("/admin")
+        logInfo("Login", "Login successful, redirecting to admin dashboard")
+        // Add a small delay to ensure auth state is updated
+        setTimeout(() => {
+          router.push("/admin")
+        }, 500)
       } else {
+        logError("Login", `Login failed: ${error || "Unknown error"}`)
         setError(error || "Failed to sign in")
       }
     } catch (err) {
-      setError(`An unexpected error occurred: ${err instanceof Error ? err.message : String(err)}`)
+      const errorMessage = err instanceof Error ? err.message : String(err)
+      logError("Login", `Unexpected error during login: ${errorMessage}`)
+      setError(`An unexpected error occurred: ${errorMessage}`)
     } finally {
       setIsLoading(false)
     }
