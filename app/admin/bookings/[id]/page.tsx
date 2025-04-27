@@ -62,6 +62,7 @@ export default function BookingDetailsPage() {
   const [retryCount, setRetryCount] = useState(0)
   const [debugInfo, setDebugInfo] = useState<any>(null)
   const [idDocuments, setIdDocuments] = useState<string[]>([])
+  const [isClient, setIsClient] = useState(false)
 
   // State for confirmation dialogs
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false)
@@ -69,17 +70,21 @@ export default function BookingDetailsPage() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [isUpdatingCleaningFee, setIsUpdatingCleaningFee] = useState(false)
 
-  const { isAuthenticated } = useAuth()
+  const { isAuthenticated, isLoading: authLoading } = useAuth()
+
+  useEffect(() => {
+    setIsClient(true)
+  }, [])
+
+  useEffect(() => {
+    if (isClient && !authLoading && !isAuthenticated) {
+      router.push("/admin/login")
+    }
+  }, [isClient, isAuthenticated, authLoading, router])
 
   // Function to load booking data with retry capability
   const loadBookingData = async () => {
-    if (!bookingId) {
-      setError("No booking ID provided")
-      setDebugInfo({
-        rawBookingId: bookingId,
-        error: "No booking ID provided",
-      })
-      setIsLoading(false)
+    if (!bookingId || !isClient || authLoading || !isAuthenticated) {
       return
     }
 
@@ -107,7 +112,7 @@ export default function BookingDetailsPage() {
 
       // Extract property from the booking response
       // The property might be in property or property_data depending on the query
-      const propertyData = fetchedBooking.property || fetchedBooking.property_data
+      const propertyData = fetchedBooking.properties || fetchedBooking.property || fetchedBooking.property_data
       setProperty(propertyData)
       setCleaningFee(fetchedBooking.cleaning_fee || 0)
       setRetryCount(0) // Reset retry count on success
@@ -156,13 +161,8 @@ export default function BookingDetailsPage() {
   }
 
   useEffect(() => {
-    if (!isAuthenticated) {
-      router.push("/admin/login")
-      return
-    }
-
     loadBookingData()
-  }, [isAuthenticated, router, bookingId, retryCount])
+  }, [isClient, authLoading, isAuthenticated, bookingId, retryCount])
 
   const handleRetry = () => {
     setRetryCount((prev) => prev + 1)
@@ -270,6 +270,34 @@ export default function BookingDetailsPage() {
     } finally {
       setIsUpdatingCleaningFee(false)
     }
+  }
+
+  if (!isClient || authLoading) {
+    return (
+      <div className="container py-12 flex flex-col items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-gouna-blue mb-4" />
+        <p className="text-gray-600">Loading...</p>
+      </div>
+    )
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="container py-12">
+        <Card className="bg-yellow-50 border-yellow-200">
+          <CardContent className="p-6">
+            <h2 className="text-xl font-semibold text-yellow-700 mb-2">Authentication Required</h2>
+            <p className="text-yellow-600">You need to be logged in as an admin to view this page.</p>
+            <Button
+              className="mt-4 bg-yellow-600 hover:bg-yellow-700 text-white"
+              onClick={() => router.push("/admin/login")}
+            >
+              Go to Login
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   if (isLoading) {

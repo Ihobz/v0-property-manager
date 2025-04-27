@@ -10,7 +10,7 @@ import { createClientSupabaseClient } from "@/lib/supabase/client"
 import { PropertyCalendar } from "@/components/property-calendar"
 
 export default function PropertyCalendarPage({ params }: { params: { id: string } }) {
-  const { isAdmin } = useAuth()
+  const { isAdmin, isAuthenticated, isLoading: authLoading } = useAuth()
   const router = useRouter()
   const [property, setProperty] = useState<any>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -19,13 +19,18 @@ export default function PropertyCalendarPage({ params }: { params: { id: string 
 
   useEffect(() => {
     setIsClient(true)
-    if (isAdmin === false) {
+  }, [])
+
+  useEffect(() => {
+    if (isClient && !authLoading && !isAuthenticated) {
       router.push("/admin/login")
     }
-  }, [isAdmin, router])
+  }, [isClient, isAuthenticated, authLoading, router])
 
   useEffect(() => {
     async function fetchProperty() {
+      if (!params.id || !isClient || authLoading || !isAuthenticated) return
+
       try {
         setIsLoading(true)
         const supabase = createClientSupabaseClient()
@@ -45,16 +50,18 @@ export default function PropertyCalendarPage({ params }: { params: { id: string 
       }
     }
 
-    if (params.id && isAdmin !== false && isClient) {
-      fetchProperty()
-    }
-  }, [params.id, isAdmin, isClient])
+    fetchProperty()
+  }, [params.id, isClient, authLoading, isAuthenticated])
 
-  if (!isClient) {
-    return null
+  if (!isClient || authLoading) {
+    return (
+      <div className="container py-12 flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-gouna-blue" />
+      </div>
+    )
   }
 
-  if (isAdmin === false) {
+  if (!isAuthenticated) {
     return (
       <div className="container py-12">
         <Card className="bg-yellow-50 border-yellow-200">
