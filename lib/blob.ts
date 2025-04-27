@@ -99,12 +99,19 @@ export async function uploadPropertyImage(file: File, propertyId: string) {
   try {
     logUploadEvent(`Uploading property image for property ${propertyId}`, "info")
 
+    // Check if blob token is available
+    if (!process.env.BLOB_READ_WRITE_TOKEN) {
+      console.error("Missing BLOB_READ_WRITE_TOKEN environment variable")
+      return { success: false, error: "Blob storage configuration error: Missing token" }
+    }
+
     // Create a unique filename with property ID and timestamp
     const filename = `property-image-${propertyId}-${Date.now()}.${file.name.split(".").pop()}`
 
-    // Upload to Vercel Blob
+    // Upload to Vercel Blob with explicit token
     const result = await put(filename, file, {
       access: "public",
+      token: process.env.BLOB_READ_WRITE_TOKEN,
     })
 
     logUploadEvent(`Property image uploaded successfully for property ${propertyId}`, "info", { url: result.url })

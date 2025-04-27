@@ -215,9 +215,28 @@ export default function BookingsPage() {
     }
   }
 
-  // Update the handleViewPropertyCalendar function
+  // Fix the handleViewPropertyCalendar function
   const handleViewPropertyCalendar = (propertyId: string) => {
-    router.push(`/admin/properties/calendar/${propertyId}`)
+    if (!propertyId) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Property ID is missing. Cannot view calendar.",
+      })
+      return
+    }
+
+    try {
+      // Use push with catch to handle any navigation errors
+      router.push(`/admin/properties/calendar/${propertyId}`)
+    } catch (error) {
+      console.error("Navigation error:", error)
+      toast({
+        variant: "destructive",
+        title: "Navigation Error",
+        description: "Could not navigate to the property calendar. Please try again.",
+      })
+    }
   }
 
   // Handle creating a test booking

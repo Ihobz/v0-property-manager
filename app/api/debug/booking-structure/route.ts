@@ -19,9 +19,11 @@ export async function GET(request: Request) {
     // Return the booking structure
     return NextResponse.json({
       columns: Object.keys(booking),
-      hasMetadata: "metadata" in booking,
-      metadataType: booking.metadata ? typeof booking.metadata : null,
-      metadataStructure: booking.metadata ? Object.keys(booking.metadata || {}) : null,
+      textFields: {
+        hasNotes: "notes" in booking,
+        hasSpecialRequests: "special_requests" in booking,
+        hasComments: "comments" in booking,
+      },
       sampleBooking: booking,
     })
   } catch (error) {

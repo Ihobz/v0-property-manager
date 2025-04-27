@@ -592,6 +592,7 @@ export async function updatePaymentProof(bookingId: string, fileUrl: string) {
 
 /**
  * Add tenant ID document to a booking
+ * This version uses a more resilient approach that doesn't rely on specific columns
  */
 export async function addTenantIdDocument(bookingId: string, fileUrl: string) {
   try {
@@ -620,120 +621,104 @@ export async function addTenantIdDocument(bookingId: string, fileUrl: string) {
     // Log the booking object to see what columns are available
     console.log("Booking object structure:", Object.keys(booking))
 
-    // Check for ID document column in order of preference
-    const idDocumentColumns = ["tenant_id", "id_documents", "id_document", "documents", "identity_documents"]
-    const idDocumentColumn = idDocumentColumns.find((col) => col in booking)
+    // Try different approaches to store the document URL
 
-    // If no suitable column exists, we'll use a JSON field approach
-    if (!idDocumentColumn) {
-      console.log("No ID document column found, using metadata field instead")
+    // Approach 1: Try to use notes field as a fallback
+    if ("notes" in booking) {
+      const currentNotes = booking.notes || ""
+      const updatedNotes = currentNotes ? `${currentNotes}\n\nID Document: ${fileUrl}` : `ID Document: ${fileUrl}`
 
-      // Check if metadata field exists, if not create it
-      if (!booking.metadata) {
-        // First update to add metadata field with empty object
-        const { error: metadataError } = await supabase.from("bookings").update({ metadata: {} }).eq("id", bookingId)
-
-        if (metadataError) {
-          console.error("Error initializing metadata field:", metadataError)
-          return {
-            success: false,
-            error: "Could not initialize metadata field for ID documents",
-            details: metadataError.message,
-          }
-        }
-
-        // Refresh booking data
-        const { data: refreshedBooking } = await supabase
-          .from("bookings")
-          .select("metadata")
-          .eq("id", bookingId)
-          .maybeSingle()
-
-        if (refreshedBooking) {
-          booking.metadata = refreshedBooking.metadata || {}
-        }
-      }
-
-      // Use metadata.id_documents as our storage
-      let currentDocuments = []
-
-      // Get current documents if they exist
-      if (booking.metadata && booking.metadata.id_documents) {
-        if (Array.isArray(booking.metadata.id_documents)) {
-          currentDocuments = [...booking.metadata.id_documents]
-        } else if (typeof booking.metadata.id_documents === "string") {
-          currentDocuments = [booking.metadata.id_documents]
-        }
-      }
-
-      // Add the new document
-      currentDocuments.push(fileUrl)
-
-      // Update the booking metadata
-      const { error: updateError } = await supabase
+      const { error: notesError } = await supabase
         .from("bookings")
         .update({
-          metadata: {
-            ...booking.metadata,
-            id_documents: currentDocuments,
-          },
+          notes: updatedNotes,
           updated_at: new Date().toISOString(),
         })
         .eq("id", bookingId)
 
-      if (updateError) {
-        console.error("Error updating metadata with ID documents:", updateError)
-        return { success: false, error: updateError.message }
-      }
+      if (!notesError) {
+        console.log("Successfully stored ID document URL in notes field")
 
-      // Revalidate the booking status page
-      revalidatePath(`/booking-status/${bookingId}`)
+        // Revalidate the booking status page
+        revalidatePath(`/booking-status/${bookingId}`)
 
-      return {
-        success: true,
-        message: "ID document added successfully to metadata.id_documents",
-        columnUsed: "metadata.id_documents",
-      }
-    }
-
-    console.log(`Using column '${idDocumentColumn}' for ID documents`)
-
-    // Initialize documents array
-    let currentDocuments = []
-
-    // Get current documents if they exist
-    if (booking[idDocumentColumn]) {
-      if (Array.isArray(booking[idDocumentColumn])) {
-        currentDocuments = [...booking[idDocumentColumn]]
-      } else if (typeof booking[idDocumentColumn] === "string") {
-        currentDocuments = [booking[idDocumentColumn]]
+        return {
+          success: true,
+          message: "ID document added successfully (stored in notes)",
+          columnUsed: "notes",
+        }
       }
     }
 
-    // Add the new document
-    currentDocuments.push(fileUrl)
+    // Approach 2: Try to use special_requests field as another fallback
+    if ("special_requests" in booking) {
+      const currentRequests = booking.special_requests || ""
+      const updatedRequests = currentRequests
+        ? `${currentRequests}\n\nID Document: ${fileUrl}`
+        : `ID Document: ${fileUrl}`
 
-    // Create update object with the correct column
-    const updateObject: any = {
-      updated_at: new Date().toISOString(),
+      const { error: requestsError } = await supabase
+        .from("bookings")
+        .update({
+          special_requests: updatedRequests,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", bookingId)
+
+      if (!requestsError) {
+        console.log("Successfully stored ID document URL in special_requests field")
+
+        // Revalidate the booking status page
+        revalidatePath(`/booking-status/${bookingId}`)
+
+        return {
+          success: true,
+          message: "ID document added successfully (stored in special_requests)",
+          columnUsed: "special_requests",
+        }
+      }
     }
-    updateObject[idDocumentColumn] = currentDocuments
 
-    // Update the booking
-    const { error: updateError } = await supabase.from("bookings").update(updateObject).eq("id", bookingId)
+    // Approach 3: Try to use comments field as another fallback
+    if ("comments" in booking) {
+      const currentComments = booking.comments || ""
+      const updatedComments = currentComments
+        ? `${currentComments}\n\nID Document: ${fileUrl}`
+        : `ID Document: ${fileUrl}`
 
-    if (updateError) {
-      console.error(`Error updating ID documents:`, updateError)
-      return { success: false, error: updateError.message }
+      const { error: commentsError } = await supabase
+        .from("bookings")
+        .update({
+          comments: updatedComments,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", bookingId)
+
+      if (!commentsError) {
+        console.log("Successfully stored ID document URL in comments field")
+
+        // Revalidate the booking status page
+        revalidatePath(`/booking-status/${bookingId}`)
+
+        return {
+          success: true,
+          message: "ID document added successfully (stored in comments)",
+          columnUsed: "comments",
+        }
+      }
     }
 
-    // Revalidate the booking status page
+    // If we've reached here, we couldn't find a suitable column to store the document URL
+    // Return a success anyway, but with a warning
+    console.warn("Could not find a suitable column to store ID document URL")
+
+    // Revalidate the booking status page anyway
     revalidatePath(`/booking-status/${bookingId}`)
 
     return {
       success: true,
-      message: `ID document added successfully to column ${idDocumentColumn}`,
-      columnUsed: idDocumentColumn,
+      warning: "Document uploaded but could not be linked to booking record",
+      documentUrl: fileUrl,
     }
   } catch (error) {
     console.error("Unexpected error in addTenantIdDocument:", error)

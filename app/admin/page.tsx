@@ -9,8 +9,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useAuth } from "@/lib/auth-provider"
 import { useBookings } from "@/hooks/use-bookings"
 import { useProperties } from "@/hooks/use-properties"
-import { Loader2, Plus, Pencil, Trash2, Calendar, Home, CalendarDays, Users } from "lucide-react"
-import { format } from "date-fns"
+import { Loader2, Plus, Pencil, Trash2, Calendar, Home, Users, CheckCircle, Clock, LogIn, LogOut } from "lucide-react"
+import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isWithinInterval, parseISO } from "date-fns"
 
 export default function AdminDashboard() {
   const { isAdmin } = useAuth()
@@ -31,29 +31,41 @@ export default function AdminDashboard() {
   }
 
   // Calculate occupancy metrics
-  const calculateOccupancy = () => {
+  const calculateOccupancy = (bookings, properties) => {
     if (!bookings || !properties || bookings.length === 0 || properties.length === 0) {
       return { rate: 0, bookedNights: 0, totalNights: 0 }
     }
 
     const now = new Date()
-    const thirtyDaysAgo = new Date()
-    thirtyDaysAgo.setDate(now.getDate() - 30)
+    const firstDayOfMonth = startOfMonth(now)
+    const lastDayOfMonth = endOfMonth(now)
+    const daysInMonth = (lastDayOfMonth.getTime() - firstDayOfMonth.getTime()) / (1000 * 60 * 60 * 24) + 1
 
-    // Count confirmed bookings in the last 30 days
-    const recentBookings = bookings.filter(
-      (booking) => booking.status === "confirmed" && new Date(booking.created_at) >= thirtyDaysAgo,
-    )
+    // Count confirmed bookings in the current month
+    const currentMonthBookings = bookings.filter((booking) => {
+      const checkIn = parseISO(booking.check_in)
+      const checkOut = parseISO(booking.check_out)
 
-    const bookedNights = recentBookings.reduce((total, booking) => {
-      const checkIn = new Date(booking.check_in)
-      const checkOut = new Date(booking.check_out)
-      const nights = Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24))
+      // Check if the booking overlaps with the current month
+      return booking.status === "confirmed" && checkIn <= lastDayOfMonth && checkOut >= firstDayOfMonth
+    })
+
+    // Calculate booked nights in the current month
+    const bookedNights = currentMonthBookings.reduce((total, booking) => {
+      const checkIn = parseISO(booking.check_in)
+      const checkOut = parseISO(booking.check_out)
+
+      // Adjust dates to be within the current month
+      const effectiveCheckIn = checkIn < firstDayOfMonth ? firstDayOfMonth : checkIn
+      const effectiveCheckOut = checkOut > lastDayOfMonth ? lastDayOfMonth : checkOut
+
+      // Calculate nights within the current month
+      const nights = Math.ceil((effectiveCheckOut.getTime() - effectiveCheckIn.getTime()) / (1000 * 60 * 60 * 24)) + 1
       return total + nights
     }, 0)
 
-    // Total available nights in the last 30 days
-    const totalNights = properties.length * 30
+    // Total available nights in the current month
+    const totalNights = properties.length * daysInMonth
 
     // Calculate occupancy rate
     const rate = totalNights > 0 ? Math.round((bookedNights / totalNights) * 100) : 0
@@ -61,7 +73,46 @@ export default function AdminDashboard() {
     return { rate, bookedNights, totalNights }
   }
 
-  const occupancy = calculateOccupancy()
+  const getConfirmedBookingsCount = (bookings) => {
+    if (!bookings) return 0
+    return bookings.filter((booking) => booking.status === "confirmed").length
+  }
+
+  const getPendingBookingsCount = (bookings) => {
+    if (!bookings) return 0
+    return bookings.filter(
+      (booking) =>
+        booking.status === "awaiting_payment" ||
+        booking.status === "awaiting_confirmation" ||
+        booking.status === "pending",
+    ).length
+  }
+
+  const getCheckInsThisWeek = (bookings) => {
+    if (!bookings) return 0
+    const now = new Date()
+    const weekStart = startOfWeek(now, { weekStartsOn: 1 }) // Week starts on Monday
+    const weekEnd = endOfWeek(now, { weekStartsOn: 1 })
+
+    return bookings.filter((booking) => {
+      const checkIn = parseISO(booking.check_in)
+      return isWithinInterval(checkIn, { start: weekStart, end: weekEnd })
+    }).length
+  }
+
+  const getCheckOutsThisWeek = (bookings) => {
+    if (!bookings) return 0
+    const now = new Date()
+    const weekStart = startOfWeek(now, { weekStartsOn: 1 }) // Week starts on Monday
+    const weekEnd = endOfWeek(now, { weekStartsOn: 1 })
+
+    return bookings.filter((booking) => {
+      const checkOut = parseISO(booking.check_out)
+      return isWithinInterval(checkOut, { start: weekStart, end: weekEnd })
+    }).length
+  }
+
+  const occupancy = calculateOccupancy(bookings, properties)
 
   const handleEditProperty = (id: string) => {
     router.push(`/admin/properties/edit/${id}`)
@@ -99,13 +150,26 @@ export default function AdminDashboard() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-xl">Bookings</CardTitle>
-            <CardDescription>Total bookings received</CardDescription>
+            <CardTitle className="text-xl">Confirmed Bookings</CardTitle>
+            <CardDescription>Total confirmed bookings</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex items-center">
-              <CalendarDays className="h-8 w-8 text-gouna-blue mr-4" />
-              <span className="text-3xl font-bold">{bookings?.length || 0}</span>
+              <CheckCircle className="h-8 w-8 text-green-600 mr-4" />
+              <span className="text-3xl font-bold">{getConfirmedBookingsCount(bookings)}</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xl">Pending Bookings</CardTitle>
+            <CardDescription>Awaiting payment or confirmation</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center">
+              <Clock className="h-8 w-8 text-amber-500 mr-4" />
+              <span className="text-3xl font-bold">{getPendingBookingsCount(bookings)}</span>
             </div>
           </CardContent>
         </Card>
@@ -113,7 +177,7 @@ export default function AdminDashboard() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-xl">Occupancy Rate</CardTitle>
-            <CardDescription>Last 30 days</CardDescription>
+            <CardDescription>Current month</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex items-center">
@@ -123,6 +187,32 @@ export default function AdminDashboard() {
             <p className="text-sm text-gray-500 mt-2">
               {occupancy.bookedNights} of {occupancy.totalNights} available nights booked
             </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xl">Check-ins This Week</CardTitle>
+            <CardDescription>Arriving guests</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center">
+              <LogIn className="h-8 w-8 text-blue-600 mr-4" />
+              <span className="text-3xl font-bold">{getCheckInsThisWeek(bookings)}</span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xl">Check-outs This Week</CardTitle>
+            <CardDescription>Departing guests</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center">
+              <LogOut className="h-8 w-8 text-purple-600 mr-4" />
+              <span className="text-3xl font-bold">{getCheckOutsThisWeek(bookings)}</span>
+            </div>
           </CardContent>
         </Card>
       </div>

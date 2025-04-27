@@ -31,13 +31,30 @@ import { getBookingById } from "@/app/api/bookings/actions"
 
 // Helper function to extract ID documents from booking object
 function getIdDocuments(booking: any): string[] {
-  // First check metadata field which is our fallback solution
-  if (booking.metadata && booking.metadata.id_documents) {
-    if (Array.isArray(booking.metadata.id_documents)) {
-      return booking.metadata.id_documents
-    }
-    if (typeof booking.metadata.id_documents === "string") {
-      return [booking.metadata.id_documents]
+  const documents: string[] = []
+
+  // Check text fields for URLs
+  const textFields = ["notes", "special_requests", "comments"]
+
+  for (const field of textFields) {
+    if (booking[field] && typeof booking[field] === "string") {
+      // Look for URLs in the text
+      const urlRegex = /(https?:\/\/[^\s]+)/g
+      const matches = booking[field].match(urlRegex)
+
+      if (matches) {
+        // Filter for image or PDF URLs
+        const mediaUrls = matches.filter(
+          (url) =>
+            url.includes(".jpg") ||
+            url.includes(".jpeg") ||
+            url.includes(".png") ||
+            url.includes(".pdf") ||
+            url.includes("vercel-blob.com"), // Vercel Blob URLs
+        )
+
+        documents.push(...mediaUrls)
+      }
     }
   }
 
@@ -48,17 +65,17 @@ function getIdDocuments(booking: any): string[] {
     if (booking[column]) {
       // Convert to array if it's a string
       if (typeof booking[column] === "string") {
-        return [booking[column]]
+        documents.push(booking[column])
       }
-      // Return as is if it's already an array
+      // Add array items if it's already an array
       if (Array.isArray(booking[column])) {
-        return booking[column]
+        documents.push(...booking[column])
       }
     }
   }
 
-  // Return empty array if no documents found
-  return []
+  // Return unique documents
+  return [...new Set(documents)]
 }
 
 // Helper function to determine file type icon
