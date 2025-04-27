@@ -34,7 +34,7 @@ import {
   ChevronRight,
   CalendarIcon,
   X,
-  CalendarPlus2Icon as CalendarIcon2,
+  CalendarPlus2Icon,
   Lock,
   Unlock,
   Plus,
@@ -836,12 +836,12 @@ export function PropertyCalendar({ propertyId }: PropertyCalendarProps) {
                     nav_button_previous: "absolute left-1",
                     nav_button_next: "absolute right-1",
                     table: "w-full border-collapse space-y-1",
-                    head_row: "flex",
-                    head_cell: "text-muted-foreground rounded-md w-9 font-normal text-[0.8rem]",
-                    row: "flex w-full mt-2",
+                    head_row: "flex w-full justify-between",
+                    head_cell: "text-muted-foreground rounded-md w-9 font-normal text-[0.8rem] text-center",
+                    row: "flex w-full mt-2 justify-between",
                     cell: cn(
-                      "relative p-0 text-center text-sm focus-within:relative focus-within:z-20 [&:has([aria-selected])]:bg-accent",
-                      blockMode === "range" ? "h-9 w-9 cursor-pointer" : "h-9 w-9",
+                      "relative p-0 text-center text-sm focus-within:relative focus-within:z-20 [&:has([aria-selected])]:bg-accent w-9",
+                      blockMode === "range" ? "h-9 cursor-pointer" : "h-9",
                     ),
                     day: cn("h-9 w-9 p-0 font-normal aria-selected:opacity-100"),
                     day_range_end: "day-range-end",
@@ -1017,7 +1017,7 @@ export function PropertyCalendar({ propertyId }: PropertyCalendarProps) {
                 </div>
               ) : (
                 <div className="text-center py-8 text-gray-500">
-                  <CalendarIcon2 className="h-12 w-12 mx-auto text-gray-300" />
+                  <CalendarPlus2Icon className="h-12 w-12 mx-auto text-gray-300" />
                   <p className="mt-2">No bookings found</p>
                 </div>
               )}
