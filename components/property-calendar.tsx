@@ -151,7 +151,9 @@ export function PropertyCalendar({ propertyId }: PropertyCalendarProps) {
   }
 
   // Helper function to check if a date is within a booking range (including check-in date)
-  const isDateInBookingRange = (date: Date, booking: Booking) => {
+  const isDateInBookingRange = (date: Date | undefined, booking: Booking) => {
+    if (!date) return false
+
     const checkIn = new Date(booking.check_in)
     const checkOut = new Date(booking.check_out)
 
@@ -310,7 +312,9 @@ export function PropertyCalendar({ propertyId }: PropertyCalendarProps) {
     setMonth(newDate)
   }
 
-  const getDayClassName = (date: Date) => {
+  const getDayClassName = (date: Date | undefined) => {
+    if (!date) return ""
+
     // Check if date is in selected dates (for multi-select mode)
     if (blockMode === "range" && selectedDates.some((d) => isSameDay(d, date))) {
       return "bg-gouna-blue text-white hover:bg-gouna-blue-dark"
@@ -339,7 +343,9 @@ export function PropertyCalendar({ propertyId }: PropertyCalendarProps) {
     return ""
   }
 
-  const getDateTooltip = (date: Date) => {
+  const getDateTooltip = (date: Date | undefined) => {
+    if (!date) return ""
+
     // Check if date is in bookings (including check-in date)
     for (const booking of bookings) {
       if (isDateInBookingRange(date, booking)) {
@@ -651,6 +657,10 @@ export function PropertyCalendar({ propertyId }: PropertyCalendarProps) {
           }}
           components={{
             Day: ({ date, ...props }) => {
+              if (!date) {
+                return <div {...props}></div>
+              }
+
               const className = getDayClassName(date)
               const tooltip = getDateTooltip(date)
               const isBlocked = blockedDates.some((bd) => isSameDay(new Date(bd.date), date))
