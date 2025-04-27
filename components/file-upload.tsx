@@ -7,9 +7,10 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { useToast } from "@/components/ui/use-toast"
-import { uploadFile } from "@/lib/blob"
+import { uploadPaymentProof, uploadTenantDocument } from "@/lib/blob"
 import { AlertCircle, CheckCircle, Upload } from "lucide-react"
 import { useRouter } from "next/navigation"
+import { logError } from "@/lib/logging"
 
 interface FileUploadProps {
   bookingId: string
@@ -77,17 +78,20 @@ export function FileUpload({
         })
       }, 500)
 
-      // Upload the file
-      const result = await uploadFile({
-        file,
-        bookingId,
-        type: uploadType,
-      })
+      // Upload the file based on the upload type
+      let result
+      if (uploadType === "payment") {
+        result = await uploadPaymentProof(file, bookingId)
+      } else if (uploadType === "id") {
+        result = await uploadTenantDocument(file, bookingId)
+      } else {
+        throw new Error("Invalid upload type")
+      }
 
       clearInterval(progressInterval)
 
-      if (result.error) {
-        throw new Error(result.error)
+      if (!result.success) {
+        throw new Error(result.error || "Upload failed")
       }
 
       setProgress(100)
@@ -102,11 +106,13 @@ export function FileUpload({
         router.push(`/booking-status/${bookingId}`)
       }, 2000)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to upload file")
+      const errorMessage = err instanceof Error ? err.message : "Failed to upload file"
+      setError(errorMessage)
+      logError("Upload failed", { bookingId, uploadType, error: errorMessage })
       toast({
         variant: "destructive",
         title: "Upload failed",
-        description: err instanceof Error ? err.message : "Failed to upload file",
+        description: errorMessage,
       })
     } finally {
       setUploading(false)
