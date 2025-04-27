@@ -14,6 +14,7 @@ import {
   FileText,
   Settings,
   AlertTriangle,
+  Trash2,
 } from "lucide-react"
 import { useAuth } from "@/lib/auth-provider"
 import { useEffect, useState } from "react"
@@ -185,6 +186,26 @@ export default function DebugPage() {
           <CardContent className="space-y-2">
             <Button onClick={() => router.push("/admin/debug/manage-admins")} className="w-full">
               Manage Admins
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card className="border-red-200">
+          <CardHeader className="bg-red-50">
+            <CardTitle className="flex items-center text-red-600">
+              <Trash2 className="h-5 w-5 mr-2" /> Reset Data
+            </CardTitle>
+            <CardDescription className="text-red-500">
+              Delete all properties and bookings to start fresh
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            <Button
+              onClick={() => router.push("/admin/debug/reset-data")}
+              className="w-full bg-red-600 hover:bg-red-700"
+              variant="destructive"
+            >
+              Reset All Data
             </Button>
           </CardContent>
         </Card>
