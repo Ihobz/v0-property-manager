@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useAuth } from "@/lib/auth-provider"
 import { useBookings } from "@/hooks/use-bookings"
 import { useProperties } from "@/hooks/use-properties"
-import { Loader2, Plus, Pencil, Trash2, Calendar, Home, Users, CheckCircle, Clock, LogIn, LogOut } from "lucide-react"
+import { Loader2, Plus, Pencil, Calendar, Home, Users, CheckCircle, Clock, LogIn, LogOut, Eye } from "lucide-react"
 import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isWithinInterval, parseISO } from "date-fns"
 
 export default function AdminDashboard() {
@@ -128,6 +128,13 @@ export default function AdminDashboard() {
 
   const handleViewBooking = (id: string) => {
     router.push(`/admin/bookings/${id}`)
+  }
+
+  // Find property title by ID
+  const getPropertyTitle = (propertyId) => {
+    if (!properties) return propertyId
+    const property = properties.find((p) => p.id === propertyId)
+    return property ? property.title || property.name || propertyId : propertyId
   }
 
   return (
@@ -249,7 +256,7 @@ export default function AdminDashboard() {
                     {bookings.slice(0, 5).map((booking) => (
                       <TableRow key={booking.id}>
                         <TableCell className="font-medium">{booking.name}</TableCell>
-                        <TableCell>{booking.property_title || booking.property_id}</TableCell>
+                        <TableCell>{getPropertyTitle(booking.property_id)}</TableCell>
                         <TableCell>
                           {format(new Date(booking.check_in), "MMM d")} -{" "}
                           {format(new Date(booking.check_out), "MMM d, yyyy")}
@@ -273,7 +280,7 @@ export default function AdminDashboard() {
                         </TableCell>
                         <TableCell className="text-right">
                           <Button variant="outline" size="sm" onClick={() => handleViewBooking(booking.id)}>
-                            View
+                            <Eye className="h-4 w-4 mr-1" /> View
                           </Button>
                         </TableCell>
                       </TableRow>
@@ -336,27 +343,19 @@ export default function AdminDashboard() {
                           <div className="flex justify-center space-x-2">
                             <Button
                               variant="outline"
-                              size="icon"
-                              onClick={() => handleEditProperty(property.id)}
-                              title="Edit Property"
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              onClick={() => handleDeleteProperty(property.id)}
-                              title="Delete Property"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="icon"
+                              size="sm"
                               onClick={() => handleViewCalendar(property.id)}
                               title="View Calendar"
                             >
-                              <Calendar className="h-4 w-4" />
+                              <Calendar className="h-4 w-4 mr-1" /> Calendar
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleEditProperty(property.id)}
+                              title="Edit Property"
+                            >
+                              <Pencil className="h-4 w-4 mr-1" /> Edit
                             </Button>
                           </div>
                         </TableCell>

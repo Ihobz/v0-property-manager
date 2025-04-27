@@ -50,8 +50,27 @@ export default function PropertyCalendarPage({ params }: { params: { id: string 
     }
   }, [params.id, isAdmin, isClient])
 
-  if (!isClient || isAdmin === false) {
+  if (!isClient) {
     return null
+  }
+
+  if (isAdmin === false) {
+    return (
+      <div className="container py-12">
+        <Card className="bg-yellow-50 border-yellow-200">
+          <CardContent className="p-6">
+            <h2 className="text-xl font-semibold text-yellow-700 mb-2">Authentication Required</h2>
+            <p className="text-yellow-600">You need to be logged in as an admin to view this page.</p>
+            <Button
+              className="mt-4 bg-yellow-600 hover:bg-yellow-700 text-white"
+              onClick={() => router.push("/admin/login")}
+            >
+              Go to Login
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   if (isLoading) {
@@ -90,7 +109,9 @@ export default function PropertyCalendarPage({ params }: { params: { id: string 
 
       <Card className="mb-8">
         <CardHeader className="pb-2">
-          <CardTitle className="text-2xl font-bold text-gouna-blue-dark">Calendar for {property.name}</CardTitle>
+          <CardTitle className="text-2xl font-bold text-gouna-blue-dark">
+            Calendar for {property.title || property.name}
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="text-sm text-gray-500 mb-4">
