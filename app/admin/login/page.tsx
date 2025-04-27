@@ -12,19 +12,47 @@ import { AlertCircle, Loader2 } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { useRouter } from "next/navigation"
 import { logInfo, logError } from "@/lib/logging"
+import { getSupabaseBrowserClient } from "@/lib/supabase/client"
 
 export default function AdminLoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+  const [debugInfo, setDebugInfo] = useState<string | null>(null)
   const { login, isAuthenticated, isAdmin } = useAuth()
   const router = useRouter()
+
+  // Check current auth status on mount
+  useEffect(() => {
+    const checkCurrentAuth = async () => {
+      try {
+        const supabase = getSupabaseBrowserClient()
+        const { data, error } = await supabase.auth.getSession()
+
+        if (error) {
+          console.error("Error checking initial session:", error)
+          return
+        }
+
+        if (data.session) {
+          console.log("Initial session check: User is logged in", data.session.user.email)
+        } else {
+          console.log("Initial session check: No active session")
+        }
+      } catch (err) {
+        console.error("Error in initial auth check:", err)
+      }
+    }
+
+    checkCurrentAuth()
+  }, [])
 
   // Redirect to admin dashboard if already authenticated and is admin
   useEffect(() => {
     if (isAuthenticated && isAdmin) {
       logInfo("Login", "User already authenticated, redirecting to admin dashboard")
+      console.log("Auth state indicates user is authenticated and admin, redirecting")
       router.push("/admin")
     }
   }, [isAuthenticated, isAdmin, router])
@@ -32,29 +60,48 @@ export default function AdminLoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+    setDebugInfo(null)
     setIsLoading(true)
 
     try {
       logInfo("Login", `Attempting login for: ${email}`)
+      console.log(`Login attempt for: ${email}`)
+
       const { success, error } = await login(email, password)
 
       if (success) {
         logInfo("Login", "Login successful, redirecting to admin dashboard")
+        console.log("Login successful, preparing to redirect")
+
+        // Check session after login
+        const supabase = getSupabaseBrowserClient()
+        const { data: sessionData } = await supabase.auth.getSession()
+
+        setDebugInfo(`Login successful. Session exists: ${!!sessionData.session}`)
+        console.log("Session after login:", sessionData.session ? "exists" : "missing")
+
         // Add a small delay to ensure auth state is updated
         setTimeout(() => {
+          console.log("Redirecting to admin dashboard now")
           router.push("/admin")
-        }, 500)
+        }, 1000)
       } else {
         logError("Login", `Login failed: ${error || "Unknown error"}`)
+        console.error("Login failed:", error)
         setError(error || "Failed to sign in")
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : String(err)
       logError("Login", `Unexpected error during login: ${errorMessage}`)
+      console.error("Login exception:", errorMessage)
       setError(`An unexpected error occurred: ${errorMessage}`)
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const handleDebugRedirect = () => {
+    router.push("/admin/debug/auth-status")
   }
 
   return (
@@ -72,6 +119,13 @@ export default function AdminLoginPage() {
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
+
+            {debugInfo && (
+              <Alert>
+                <AlertDescription>{debugInfo}</AlertDescription>
+              </Alert>
+            )}
+
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -103,6 +157,12 @@ export default function AdminLoginPage() {
                 "Sign In"
               )}
             </Button>
+
+            <div className="pt-2">
+              <Button type="button" variant="outline" className="w-full" onClick={handleDebugRedirect}>
+                Check Auth Status
+              </Button>
+            </div>
           </form>
         </CardContent>
         <CardFooter className="flex justify-center">

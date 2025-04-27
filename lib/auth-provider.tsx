@@ -77,6 +77,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setIsLoading(true)
       setError(null)
       logInfo("AuthProvider", "Checking session...")
+      console.log("AuthProvider: Checking session...")
 
       let supabase
       try {
@@ -84,6 +85,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       } catch (clientError) {
         const errorMsg = clientError instanceof Error ? clientError.message : "Unknown error"
         logError("AuthProvider", `Failed to initialize Supabase client: ${errorMsg}`)
+        console.error("AuthProvider: Failed to initialize Supabase client:", errorMsg)
         setError(`Failed to initialize authentication client: ${errorMsg}`)
         return
       }
@@ -101,6 +103,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       if (sessionError) {
         logError("AuthProvider", `Error getting session: ${sessionError.message}`)
+        console.error("AuthProvider: Error getting session:", sessionError.message)
         setError(`Authentication error: ${sessionError.message}`)
         setIsAuthenticated(false)
         setIsAdmin(false)
@@ -109,12 +112,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       if (!session) {
         logInfo("AuthProvider", "No session found")
+        console.log("AuthProvider: No session found")
         setIsAuthenticated(false)
         setIsAdmin(false)
         return
       }
 
       logInfo("AuthProvider", "Session found, user is authenticated")
+      console.log("AuthProvider: Session found, user is authenticated:", session.user.email)
       setIsAuthenticated(true)
 
       // Check if the user is an admin
@@ -129,22 +134,26 @@ export function AuthProvider({ children }: AuthProviderProps) {
         if (adminError && adminError.code !== "PGRST116") {
           // PGRST116 is "no rows returned"
           logError("AuthProvider", `Error checking admin status: ${adminError.message}`)
+          console.error("AuthProvider: Error checking admin status:", adminError.message)
           setError(`Admin check error: ${adminError.message}`)
           setIsAdmin(false)
           return
         }
 
         logInfo("AuthProvider", `Admin check result: ${!!adminData}`)
+        console.log("AuthProvider: Admin check result:", !!adminData)
         setIsAdmin(!!adminData)
       } catch (adminCheckError) {
         const errorMsg = adminCheckError instanceof Error ? adminCheckError.message : "Unknown error"
         logError("AuthProvider", `Error checking admin status: ${errorMsg}`)
+        console.error("AuthProvider: Error checking admin status:", errorMsg)
         setError(`Admin check failed: ${errorMsg}`)
         setIsAdmin(false)
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : "Unknown error"
       logError("AuthProvider", `Unexpected error in checkSession: ${errorMsg}`)
+      console.error("AuthProvider: Unexpected error in checkSession:", errorMsg)
       setError(`Session check failed: ${errorMsg}`)
       setIsAuthenticated(false)
       setIsAdmin(false)
@@ -159,6 +168,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setError(null)
       setIsLoading(true)
       logInfo("AuthProvider", `Attempting login for: ${email}`)
+      console.log("AuthProvider: Attempting login for:", email)
 
       let supabase
       try {
@@ -166,12 +176,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
       } catch (clientError) {
         const errorMsg = clientError instanceof Error ? clientError.message : "Unknown error"
         logError("AuthProvider", `Failed to initialize Supabase client: ${errorMsg}`)
+        console.error("AuthProvider: Failed to initialize Supabase client:", errorMsg)
         return {
           success: false,
           error: `Failed to initialize authentication client: ${errorMsg}`,
         }
       }
 
+      // First, ensure we're logged out to prevent any session conflicts
+      await supabase.auth.signOut()
+      console.log("AuthProvider: Cleared any existing sessions")
+
+      // Now attempt to sign in
       const { data, error } = await retryOperation(
         () =>
           supabase.auth.signInWithPassword({
@@ -185,17 +201,20 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       if (error) {
         logError("AuthProvider", `Login error: ${error.message}`)
+        console.error("AuthProvider: Login error:", error.message)
         setError(`Login failed: ${error.message}`)
         return { success: false, error: error.message }
       }
 
       if (!data.session) {
         logError("AuthProvider", "No session returned after login")
+        console.error("AuthProvider: No session returned after login")
         setError("No session returned after login")
         return { success: false, error: "Authentication failed" }
       }
 
       logInfo("AuthProvider", "Authentication successful, checking admin status")
+      console.log("AuthProvider: Authentication successful, checking admin status")
       setIsAuthenticated(true)
 
       // Check if the user is an admin
@@ -209,12 +228,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
         if (adminError && adminError.code !== "PGRST116") {
           logError("AuthProvider", `Error checking admin status: ${adminError.message}`)
+          console.error("AuthProvider: Error checking admin status:", adminError.message)
           setError(`Admin verification failed: ${adminError.message}`)
         }
 
         if (!adminData) {
           // Sign out if not an admin
           logInfo("AuthProvider", "User is not an admin, signing out")
+          console.log("AuthProvider: User is not an admin, signing out")
           setError("Not authorized as admin")
           await supabase.auth.signOut()
           setIsAuthenticated(false)
@@ -223,16 +244,23 @@ export function AuthProvider({ children }: AuthProviderProps) {
         }
 
         logInfo("AuthProvider", `Login successful for admin: ${email}`)
+        console.log("AuthProvider: Login successful for admin:", email)
         setIsAdmin(true)
         setError(null)
 
         // Force a session refresh to ensure the cookie is set
         await supabase.auth.refreshSession()
+        console.log("AuthProvider: Session refreshed after login")
+
+        // Double-check that we have a valid session
+        const { data: sessionCheck } = await supabase.auth.getSession()
+        console.log("AuthProvider: Session check after login:", sessionCheck.session ? "Session exists" : "No session")
 
         return { success: true }
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : "Unknown error"
         logError("AuthProvider", `Exception checking admin status: ${errorMsg}`)
+        console.error("AuthProvider: Exception checking admin status:", errorMsg)
         setError(`Admin verification error: ${errorMsg}`)
         await supabase.auth.signOut()
         setIsAuthenticated(false)
@@ -242,6 +270,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : "Unknown error"
       logError("AuthProvider", `Unexpected error during login: ${errorMsg}`)
+      console.error("AuthProvider: Unexpected error during login:", errorMsg)
       setError(`Login failed: ${errorMsg}`)
       return { success: false, error: "An unexpected error occurred" }
     } finally {
@@ -259,6 +288,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       } catch (clientError) {
         const errorMsg = clientError instanceof Error ? clientError.message : "Unknown error"
         logError("AuthProvider", `Failed to initialize Supabase client during logout: ${errorMsg}`)
+        console.error("AuthProvider: Failed to initialize Supabase client during logout:", errorMsg)
         setError(`Logout failed: ${errorMsg}`)
         return
       }
@@ -267,9 +297,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setIsAuthenticated(false)
       setIsAdmin(false)
       logInfo("AuthProvider", "User logged out successfully")
+      console.log("AuthProvider: User logged out successfully")
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : "Unknown error"
       logError("AuthProvider", `Error during logout: ${errorMsg}`)
+      console.error("AuthProvider: Error during logout:", errorMsg)
       setError(`Logout failed: ${errorMsg}`)
     } finally {
       setIsLoading(false)
@@ -285,6 +317,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         try {
           setIsLoading(true)
           logInfo("AuthProvider", "Initializing authentication")
+          console.log("AuthProvider: Initializing authentication")
 
           let supabase
           try {
@@ -292,6 +325,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
           } catch (clientError) {
             const errorMsg = clientError instanceof Error ? clientError.message : "Unknown error"
             logError("AuthProvider", `Failed to initialize Supabase client during initialization: ${errorMsg}`)
+            console.error("AuthProvider: Failed to initialize Supabase client during initialization:", errorMsg)
             setError(`Authentication initialization failed: ${errorMsg}`)
             return
           }
@@ -309,6 +343,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
           if (sessionError) {
             logError("AuthProvider", `Error getting session: ${sessionError.message}`)
+            console.error("AuthProvider: Error getting session:", sessionError.message)
             setError(`Authentication error: ${sessionError.message}`)
             setIsAuthenticated(false)
             setIsAdmin(false)
@@ -317,12 +352,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
           if (!session) {
             logInfo("AuthProvider", "No session found during initialization")
+            console.log("AuthProvider: No session found during initialization")
             setIsAuthenticated(false)
             setIsAdmin(false)
             return
           }
 
           logInfo("AuthProvider", "Session found during initialization, user is authenticated")
+          console.log("AuthProvider: Session found during initialization, user is authenticated:", session.user.email)
           setIsAuthenticated(true)
 
           // Check if the user is an admin with retry
@@ -336,22 +373,26 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
             if (adminError && adminError.code !== "PGRST116") {
               logError("AuthProvider", `Error checking admin status: ${adminError.message}`)
+              console.error("AuthProvider: Error checking admin status:", adminError.message)
               setError(`Admin check error: ${adminError.message}`)
               setIsAdmin(false)
               return
             }
 
             logInfo("AuthProvider", `Admin check result during initialization: ${!!adminData}`)
+            console.log("AuthProvider: Admin check result during initialization:", !!adminData)
             setIsAdmin(!!adminData)
           } catch (adminCheckError) {
             const errorMsg = adminCheckError instanceof Error ? adminCheckError.message : "Unknown error"
             logError("AuthProvider", `Error checking admin status: ${errorMsg}`)
+            console.error("AuthProvider: Error checking admin status:", errorMsg)
             setError(`Admin check failed: ${errorMsg}`)
             setIsAdmin(false)
           }
         } catch (error) {
           const errorMsg = error instanceof Error ? error.message : "Unknown error"
           logError("AuthProvider", `Unexpected error in initialization: ${errorMsg}`)
+          console.error("AuthProvider: Unexpected error in initialization:", errorMsg)
           setError(`Session check failed: ${errorMsg}`)
           setIsAuthenticated(false)
           setIsAdmin(false)
@@ -373,6 +414,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     } catch (clientError) {
       const errorMsg = clientError instanceof Error ? clientError.message : "Unknown error"
       logError("AuthProvider", `Failed to initialize Supabase client for auth listener: ${errorMsg}`)
+      console.error("AuthProvider: Failed to initialize Supabase client for auth listener:", errorMsg)
       setError(`Authentication listener failed: ${errorMsg}`)
       return () => {}
     }
@@ -381,9 +423,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
       logInfo("AuthProvider", `Auth state changed: ${event}`)
+      console.log("AuthProvider: Auth state changed:", event)
 
       if (event === "SIGNED_IN" && session) {
         setIsAuthenticated(true)
+        console.log("AuthProvider: User signed in:", session.user.email)
+
         // Check admin status when signed in
         const checkAdminStatus = async () => {
           try {
@@ -395,19 +440,23 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
             if (adminError && adminError.code !== "PGRST116") {
               logError("AuthProvider", `Error checking admin status after sign in: ${adminError.message}`)
+              console.error("AuthProvider: Error checking admin status after sign in:", adminError.message)
               return
             }
 
             logInfo("AuthProvider", `Admin check after sign in: ${!!adminData}`)
+            console.log("AuthProvider: Admin check after sign in:", !!adminData)
             setIsAdmin(!!adminData)
           } catch (error) {
             const errorMsg = error instanceof Error ? error.message : "Unknown error"
             logError("AuthProvider", `Error checking admin status after sign in: ${errorMsg}`)
+            console.error("AuthProvider: Error checking admin status after sign in:", errorMsg)
           }
         }
 
         checkAdminStatus()
       } else if (event === "SIGNED_OUT") {
+        console.log("AuthProvider: User signed out")
         setIsAuthenticated(false)
         setIsAdmin(false)
       }
