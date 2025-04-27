@@ -3,8 +3,8 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { ArrowLeft, Loader2 } from "lucide-react"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { ArrowLeft, Loader2, Calendar } from "lucide-react"
 import { useAuth } from "@/lib/auth-provider"
 import { createClientSupabaseClient } from "@/lib/supabase/client"
 import { PropertyCalendar } from "@/components/property-calendar"
@@ -56,7 +56,7 @@ export default function PropertyCalendarPage({ params }: { params: { id: string 
   if (!isClient || authLoading) {
     return (
       <div className="container py-12 flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-gouna-blue" />
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
       </div>
     )
   }
@@ -83,7 +83,7 @@ export default function PropertyCalendarPage({ params }: { params: { id: string 
   if (isLoading) {
     return (
       <div className="container py-12 flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-gouna-blue" />
+        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
       </div>
     )
   }
@@ -110,24 +110,21 @@ export default function PropertyCalendarPage({ params }: { params: { id: string 
 
   return (
     <div className="container py-8">
-      <Button variant="ghost" className="mb-4" onClick={() => router.push("/admin/properties")}>
-        <ArrowLeft className="mr-2 h-4 w-4" /> Back to Properties
-      </Button>
+      <div className="flex items-center justify-between mb-6">
+        <Button variant="outline" onClick={() => router.push("/admin/properties")} className="gap-1">
+          <ArrowLeft className="h-4 w-4" /> Back to Properties
+        </Button>
+      </div>
 
-      <Card className="mb-8">
+      <Card className="mb-8 border-0 shadow-md">
         <CardHeader className="pb-2">
-          <CardTitle className="text-2xl font-bold text-gouna-blue-dark">
-            Calendar for {property.title || property.name}
-          </CardTitle>
+          <div className="flex items-center gap-2">
+            <Calendar className="h-5 w-5 text-blue-600" />
+            <CardTitle className="text-2xl font-bold">{property.title || property.name}</CardTitle>
+          </div>
+          <CardDescription>Manage availability, bookings, and blocked dates for this property</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="text-sm text-gray-500 mb-4">
-            <p>
-              Use this calendar to view bookings and block dates for this property. You can block individual dates or
-              date ranges when the property is unavailable (e.g., for maintenance or owner stays).
-            </p>
-          </div>
-
           <PropertyCalendar propertyId={property.id} />
         </CardContent>
       </Card>
