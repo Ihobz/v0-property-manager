@@ -19,28 +19,39 @@ export function BookingStatusCheck() {
   const [bookings, setBookings] = useState<any[]>([])
   const [error, setError] = useState<string | null>(null)
   const [searched, setSearched] = useState(false)
+  const [debugInfo, setDebugInfo] = useState<any>(null)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
     setError(null)
     setSearched(true)
+    setDebugInfo(null)
 
     try {
-      const { bookings, error } = await getBookingsByEmail(email)
+      console.log("Fetching bookings for email:", email)
+      const result = await getBookingsByEmail(email)
 
-      if (error) {
-        setError(error)
+      // Store debug info
+      setDebugInfo(result)
+      console.log("API response:", result)
+
+      if (result.error) {
+        setError(result.error)
         setBookings([])
       } else {
-        setBookings(bookings || [])
-        if (bookings.length === 0) {
+        const fetchedBookings = result.bookings || []
+        setBookings(fetchedBookings)
+
+        if (fetchedBookings.length === 0) {
           setError("No bookings found for this email address.")
         }
       }
     } catch (err) {
+      console.error("Error in booking status check:", err)
       setError("An error occurred while checking your booking status.")
       setBookings([])
+      setDebugInfo({ error: err instanceof Error ? err.message : String(err) })
     } finally {
       setIsLoading(false)
     }
@@ -59,17 +70,34 @@ export function BookingStatusCheck() {
       case "completed":
         return <Badge className="bg-blue-500">Completed</Badge>
       default:
-        return <Badge className="bg-gray-500">{status}</Badge>
+        return <Badge className="bg-gray-500">{status || "Unknown"}</Badge>
     }
   }
 
   const formatDate = (dateString: string) => {
-    const date = new Date(dateString)
-    return date.toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    })
+    if (!dateString) return "N/A"
+    try {
+      const date = new Date(dateString)
+      return date.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      })
+    } catch (e) {
+      return "Invalid Date"
+    }
+  }
+
+  // Helper function to get property name safely
+  const getPropertyName = (booking: any) => {
+    if (!booking || !booking.properties) return "Property"
+    return booking.properties.title || booking.properties.name || "Property"
+  }
+
+  // Helper function to get property location safely
+  const getPropertyLocation = (booking: any) => {
+    if (!booking || !booking.properties) return null
+    return booking.properties.location
   }
 
   return (
@@ -118,8 +146,10 @@ export function BookingStatusCheck() {
                 {bookings.map((booking) => {
                   // Encode the booking ID for the URL
                   const encodedId = encodeBookingId(booking.id)
-                  // Get property name (handle both title and name fields)
-                  const propertyName = booking.properties?.name || booking.properties?.title || "Property"
+                  // Get property name safely
+                  const propertyName = getPropertyName(booking)
+                  // Get property location safely
+                  const propertyLocation = getPropertyLocation(booking)
 
                   return (
                     <div key={booking.id} className="border rounded-lg p-4">
@@ -134,10 +164,10 @@ export function BookingStatusCheck() {
                             {formatDate(booking.check_in)} - {formatDate(booking.check_out)}
                           </span>
                         </div>
-                        {booking.properties?.location && (
+                        {propertyLocation && (
                           <div className="flex items-center">
                             <MapPin className="h-4 w-4 mr-2" />
-                            <span>{booking.properties.location}</span>
+                            <span>{propertyLocation}</span>
                           </div>
                         )}
                         <div className="flex items-center">
@@ -155,6 +185,16 @@ export function BookingStatusCheck() {
                     </div>
                   )
                 })}
+              </div>
+            )}
+
+            {/* Debug information (hidden in production) */}
+            {debugInfo && process.env.NODE_ENV !== "production" && (
+              <div className="mt-4 p-2 bg-gray-100 rounded text-xs">
+                <details>
+                  <summary className="cursor-pointer font-medium">Debug Info</summary>
+                  <pre className="mt-2 overflow-auto max-h-40">{JSON.stringify(debugInfo, null, 2)}</pre>
+                </details>
               </div>
             )}
           </div>

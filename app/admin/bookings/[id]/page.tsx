@@ -98,7 +98,11 @@ export default function BookingDetailsPage() {
 
       console.log("Setting booking data:", fetchedBooking)
       setBooking(fetchedBooking)
-      setProperty(fetchedBooking.properties)
+
+      // Extract property from the booking response
+      // The property might be in property or property_data depending on the query
+      const propertyData = fetchedBooking.property || fetchedBooking.property_data
+      setProperty(propertyData)
       setCleaningFee(fetchedBooking.cleaning_fee || 0)
       setRetryCount(0) // Reset retry count on success
 
@@ -111,6 +115,7 @@ export default function BookingDetailsPage() {
         fetchedIdType: typeof fetchedBooking.id,
         fetchedIdLength: fetchedBooking.id.length,
         match: bookingId === fetchedBooking.id,
+        propertyData: propertyData,
       })
     } catch (err) {
       console.error("Error loading booking:", err)
@@ -321,6 +326,14 @@ export default function BookingDetailsPage() {
     }
   }
 
+  // Safely access property data
+  const propertyTitle = property?.title || property?.name || "Unknown Property"
+  const propertyLocation = property?.location || "Unknown Location"
+  const propertyBedrooms = property?.bedrooms || 0
+  const propertyBathrooms = property?.bathrooms || 0
+  const propertyGuests = property?.guests || 0
+  const propertyImages = property?.images || []
+
   return (
     <div className="container py-12">
       <Button variant="ghost" className="mb-6 text-gouna-blue hover:text-gouna-blue-dark" onClick={() => router.back()}>
@@ -360,8 +373,8 @@ export default function BookingDetailsPage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                       <h3 className="text-sm font-medium text-gray-500 mb-1">Property</h3>
-                      <p className="font-semibold">{property?.title || "Unknown Property"}</p>
-                      <p className="text-sm text-gray-600">{property?.location}</p>
+                      <p className="font-semibold">{propertyTitle}</p>
+                      <p className="text-sm text-gray-600">{propertyLocation}</p>
                     </div>
 
                     <div>
@@ -563,6 +576,13 @@ export default function BookingDetailsPage() {
                       )}
                     </pre>
                   </div>
+
+                  <div className="bg-gray-50 p-4 rounded-md mt-4">
+                    <h3 className="font-medium mb-2">Property Data</h3>
+                    <pre className="text-xs bg-white p-3 rounded border overflow-auto">
+                      {JSON.stringify(property, null, 2)}
+                    </pre>
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>
@@ -623,26 +643,26 @@ export default function BookingDetailsPage() {
             <CardContent>
               <div className="relative h-48 rounded-md overflow-hidden mb-4">
                 <Image
-                  src={property?.images?.[0] || "/placeholder.svg"}
-                  alt={property?.title || "Property"}
+                  src={propertyImages?.[0] || "/placeholder.svg?height=600&width=800"}
+                  alt={propertyTitle}
                   fill
                   className="object-cover"
                 />
               </div>
-              <h3 className="font-semibold mb-1">{property?.title || "Unknown Property"}</h3>
-              <p className="text-sm text-gray-600 mb-4">{property?.location}</p>
+              <h3 className="font-semibold mb-1">{propertyTitle}</h3>
+              <p className="text-sm text-gray-600 mb-4">{propertyLocation}</p>
               <div className="grid grid-cols-3 gap-2 text-sm text-gray-600">
                 <div className="flex flex-col items-center p-2 bg-gray-50 rounded">
                   <Bed className="h-4 w-4 mb-1" />
-                  <span>{property?.bedrooms || "N/A"}</span>
+                  <span>{propertyBedrooms}</span>
                 </div>
                 <div className="flex flex-col items-center p-2 bg-gray-50 rounded">
                   <Bath className="h-4 w-4 mb-1" />
-                  <span>{property?.bathrooms || "N/A"}</span>
+                  <span>{propertyBathrooms}</span>
                 </div>
                 <div className="flex flex-col items-center p-2 bg-gray-50 rounded">
                   <Users className="h-4 w-4 mb-1" />
-                  <span>{property?.guests || "N/A"}</span>
+                  <span>{propertyGuests}</span>
                 </div>
               </div>
             </CardContent>
@@ -708,20 +728,4 @@ export default function BookingDetailsPage() {
       </AlertDialog>
     </div>
   )
-}
-
-// Helper function for status colors
-function getStatusColor(status: string) {
-  switch (status) {
-    case "confirmed":
-      return "bg-green-100 text-green-800"
-    case "awaiting_payment":
-      return "bg-yellow-100 text-yellow-800"
-    case "awaiting_confirmation":
-      return "bg-blue-100 text-blue-800"
-    case "cancelled":
-      return "bg-red-100 text-red-800"
-    default:
-      return "bg-gray-100 text-gray-800"
-  }
 }

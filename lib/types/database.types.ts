@@ -36,7 +36,7 @@ export interface Database {
           phone: string
           property_id: string
           status: string
-          tenant_id: string | null
+          tenant_id: string[] | null
           total_price: number
           updated_at: string | null
         }
@@ -54,7 +54,7 @@ export interface Database {
           phone: string
           property_id: string
           status?: string
-          tenant_id?: string | null
+          tenant_id?: string[] | null
           total_price: number
           updated_at?: string | null
         }
@@ -72,7 +72,7 @@ export interface Database {
           phone?: string
           property_id?: string
           status?: string
-          tenant_id?: string | null
+          tenant_id?: string[] | null
           total_price?: number
           updated_at?: string | null
         }
@@ -120,57 +120,83 @@ export interface Database {
       }
       properties: {
         Row: {
-          address: string
-          bathrooms: number
-          bedrooms: number
-          created_at: string
-          description: string
-          features: string[] | null
-          guests: number
           id: string
-          images: string[] | null
-          is_featured: boolean
+          title: string
+          short_description: string
+          description: string
           location: string
-          name: string
           price: number
-          property_type: string
+          bedrooms: number
+          bathrooms: number
+          guests: number
+          amenities: string[]
+          featured: boolean
+          created_at: string
           updated_at: string | null
         }
         Insert: {
-          address: string
-          bathrooms: number
-          bedrooms: number
-          created_at?: string
-          description: string
-          features?: string[] | null
-          guests: number
           id?: string
-          images?: string[] | null
-          is_featured?: boolean
+          title: string
+          short_description: string
+          description: string
           location: string
-          name: string
           price: number
-          property_type: string
+          bedrooms: number
+          bathrooms: number
+          guests: number
+          amenities?: string[]
+          featured?: boolean
+          created_at?: string
           updated_at?: string | null
         }
         Update: {
-          address?: string
-          bathrooms?: number
-          bedrooms?: number
-          created_at?: string
-          description?: string
-          features?: string[] | null
-          guests?: number
           id?: string
-          images?: string[] | null
-          is_featured?: boolean
+          title?: string
+          short_description?: string
+          description?: string
           location?: string
-          name?: string
           price?: number
-          property_type?: string
+          bedrooms?: number
+          bathrooms?: number
+          guests?: number
+          amenities?: string[]
+          featured?: boolean
+          created_at?: string
           updated_at?: string | null
         }
         Relationships: []
+      }
+      property_images: {
+        Row: {
+          id: string
+          property_id: string
+          url: string
+          is_primary: boolean
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          property_id: string
+          url: string
+          is_primary?: boolean
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          property_id?: string
+          url?: string
+          is_primary?: boolean
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "property_images_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "properties"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {

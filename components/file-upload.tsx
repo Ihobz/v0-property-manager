@@ -4,19 +4,20 @@ import type React from "react"
 
 import { useState, useRef } from "react"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
+import { uploadFile } from "@/app/api/bookings/actions"
+import { Loader2, Upload, CheckCircle, XCircle, Trash2 } from "lucide-react"
 import { Progress } from "@/components/ui/progress"
-import { useToast } from "@/components/ui/use-toast"
-import { uploadPaymentProof, uploadTenantDocument } from "@/lib/blob"
-import { AlertCircle, CheckCircle, Upload } from "lucide-react"
 import { useRouter } from "next/navigation"
-import { logError } from "@/lib/logging"
 
 interface FileUploadProps {
   bookingId: string
   uploadType: "payment" | "id"
   maxSizeMB?: number
   allowedTypes?: string[]
+  redirectAfterUpload?: boolean
+  redirectUrl?: string
+  onUploadSuccess?: () => void
+  multiple?: boolean
 }
 
 export function FileUpload({
@@ -24,178 +25,265 @@ export function FileUpload({
   uploadType,
   maxSizeMB = 5,
   allowedTypes = ["image/jpeg", "image/png", "image/jpg", "application/pdf"],
+  redirectAfterUpload = false,
+  redirectUrl,
+  onUploadSuccess,
+  multiple = uploadType === "id", // Default to true for ID documents
 }: FileUploadProps) {
-  const [file, setFile] = useState<File | null>(null)
-  const [uploading, setUploading] = useState(false)
-  const [progress, setProgress] = useState(0)
-  const [error, setError] = useState<string | null>(null)
-  const [success, setSuccess] = useState(false)
+  const [files, setFiles] = useState<File[]>([])
+  const [isUploading, setIsUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const [uploadSuccess, setUploadSuccess] = useState(false)
+  const [currentFileIndex, setCurrentFileIndex] = useState(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const { toast } = useToast()
   const router = useRouter()
 
+  const maxSizeBytes = maxSizeMB * 1024 * 1024
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0]
-    setError(null)
+    const selectedFiles = e.target.files
+    setUploadError(null)
+    setUploadSuccess(false)
 
-    if (!selectedFile) {
+    if (!selectedFiles || selectedFiles.length === 0) {
       return
     }
 
-    // Check file type
-    if (allowedTypes && !allowedTypes.includes(selectedFile.type)) {
-      setError(`Invalid file type. Please upload one of the following: ${allowedTypes.join(", ")}`)
-      return
+    const newFiles: File[] = []
+    let hasErrors = false
+
+    // Check each file
+    Array.from(selectedFiles).forEach((file) => {
+      // Check file size
+      if (file.size > maxSizeBytes) {
+        setUploadError(`File ${file.name} exceeds the maximum allowed size of ${maxSizeMB}MB.`)
+        hasErrors = true
+        return
+      }
+
+      // Check file type
+      if (!allowedTypes.includes(file.type)) {
+        setUploadError(`File type not allowed for ${file.name}. Please upload ${allowedTypes.join(", ")}.`)
+        hasErrors = true
+        return
+      }
+
+      newFiles.push(file)
+    })
+
+    if (!hasErrors) {
+      if (multiple) {
+        setFiles((prev) => [...prev, ...newFiles])
+      } else {
+        setFiles(newFiles.slice(0, 1)) // Only keep the first file if multiple is false
+      }
+    }
+  }
+
+  const removeFile = (index: number) => {
+    setFiles((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  const simulateProgress = () => {
+    setUploadProgress(0)
+    const interval = setInterval(() => {
+      setUploadProgress((prev) => {
+        if (prev >= 95) {
+          clearInterval(interval)
+          return prev
+        }
+        return prev + 5
+      })
+    }, 100)
+    return interval
+  }
+
+  const uploadCurrentFile = async () => {
+    if (currentFileIndex >= files.length) {
+      return true // All files uploaded
     }
 
-    // Check file size
-    if (maxSizeMB && selectedFile.size > maxSizeMB * 1024 * 1024) {
-      setError(`File size exceeds ${maxSizeMB}MB limit`)
-      return
+    const file = files[currentFileIndex]
+    const formData = new FormData()
+    formData.append("file", file)
+    formData.append("bookingId", bookingId)
+    formData.append("uploadType", uploadType)
+
+    const progressInterval = simulateProgress()
+    const result = await uploadFile(formData)
+    clearInterval(progressInterval)
+    setUploadProgress(100)
+
+    if (!result.success) {
+      setUploadError(result.error || `Failed to upload ${file.name}`)
+      return false
     }
 
-    setFile(selectedFile)
+    // Move to next file
+    setCurrentFileIndex(currentFileIndex + 1)
+    return true
   }
 
   const handleUpload = async () => {
-    if (!file) {
-      setError("Please select a file to upload")
+    if (files.length === 0) {
+      setUploadError("Please select at least one file to upload.")
       return
     }
 
     try {
-      setUploading(true)
-      setProgress(10)
+      setIsUploading(true)
+      setUploadError(null)
+      setCurrentFileIndex(0)
 
-      // Simulate progress updates
-      const progressInterval = setInterval(() => {
-        setProgress((prev) => {
-          if (prev >= 90) {
-            clearInterval(progressInterval)
-            return 90
+      let allSuccessful = true
+
+      // Upload files one by one
+      while (currentFileIndex < files.length) {
+        const success = await uploadCurrentFile()
+        if (!success) {
+          allSuccessful = false
+          break
+        }
+
+        // Need to update the index here for the loop condition
+        setCurrentFileIndex((prev) => prev + 1)
+      }
+
+      if (allSuccessful) {
+        setUploadSuccess(true)
+        setFiles([])
+        if (fileInputRef.current) {
+          fileInputRef.current.value = ""
+        }
+
+        // Wait a moment to ensure database updates are complete
+        setTimeout(() => {
+          // Call the onUploadSuccess callback if provided
+          if (onUploadSuccess) {
+            onUploadSuccess()
           }
-          return prev + 10
-        })
-      }, 500)
 
-      // Upload the file based on the upload type
-      let result
-      if (uploadType === "payment") {
-        result = await uploadPaymentProof(file, bookingId)
-      } else if (uploadType === "id") {
-        result = await uploadTenantDocument(file, bookingId)
-      } else {
-        throw new Error("Invalid upload type")
+          // Redirect if specified
+          if (redirectAfterUpload) {
+            const url = redirectUrl || `/booking-status/${bookingId}`
+            router.push(url)
+          }
+        }, 1000)
       }
-
-      clearInterval(progressInterval)
-
-      if (!result.success) {
-        throw new Error(result.error || "Upload failed")
-      }
-
-      setProgress(100)
-      setSuccess(true)
-      toast({
-        title: "Upload successful",
-        description: "Your file has been uploaded successfully.",
-      })
-
-      // Redirect to booking status page after a short delay
-      setTimeout(() => {
-        router.push(`/booking-status/${bookingId}`)
-      }, 2000)
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to upload file"
-      setError(errorMessage)
-      logError("Upload failed", { bookingId, uploadType, error: errorMessage })
-      toast({
-        variant: "destructive",
-        title: "Upload failed",
-        description: errorMessage,
-      })
+    } catch (error) {
+      setUploadError("An unexpected error occurred during upload.")
+      console.error("Upload error:", error)
     } finally {
-      setUploading(false)
-    }
-  }
-
-  const resetFileInput = () => {
-    setFile(null)
-    setError(null)
-    setSuccess(false)
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ""
+      setIsUploading(false)
     }
   }
 
   return (
     <div className="space-y-4">
-      <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
-        <Input
-          ref={fileInputRef}
+      <div className="flex items-center gap-4">
+        <input
           type="file"
-          onChange={handleFileChange}
-          accept={allowedTypes?.join(",")}
-          disabled={uploading || success}
+          id={`file-upload-${uploadType}`}
           className="hidden"
-          id="file-upload"
+          onChange={handleFileChange}
+          accept={allowedTypes.join(",")}
+          ref={fileInputRef}
+          disabled={isUploading}
+          multiple={multiple}
         />
         <label
-          htmlFor="file-upload"
-          className={`flex flex-col items-center justify-center cursor-pointer ${
-            uploading || success ? "opacity-50 cursor-not-allowed" : ""
+          htmlFor={`file-upload-${uploadType}`}
+          className={`flex-1 cursor-pointer border-2 border-dashed rounded-md p-4 text-center ${
+            files.length > 0 ? "border-green-300 bg-green-50" : "border-gray-300 hover:border-gray-400"
           }`}
         >
-          <Upload className="h-12 w-12 text-gray-400 mb-2" />
-          <p className="text-sm font-medium">{file ? file.name : `Click to select a file or drag and drop`}</p>
-          <p className="text-xs text-gray-500 mt-1">
-            {`Supported formats: ${allowedTypes?.map((type) => type.split("/")[1]).join(", ")}`}
-          </p>
-          <p className="text-xs text-gray-500 mt-1">{`Max size: ${maxSizeMB}MB`}</p>
+          <div className="flex flex-col items-center justify-center space-y-2">
+            {files.length > 0 ? (
+              <>
+                <CheckCircle className="h-6 w-6 text-green-500" />
+                <span className="text-sm font-medium">
+                  {files.length} {files.length === 1 ? "file" : "files"} selected
+                </span>
+                <span className="text-xs text-gray-500">Click to add more files</span>
+              </>
+            ) : (
+              <>
+                <Upload className="h-6 w-6 text-gray-400" />
+                <span className="text-sm font-medium">
+                  {uploadType === "payment" ? "Select payment proof" : "Select ID document(s)"}
+                </span>
+                <span className="text-xs text-gray-500">
+                  Click to browse or drag and drop (max {maxSizeMB}MB)
+                  {multiple && " • You can select multiple files"}
+                </span>
+              </>
+            )}
+          </div>
         </label>
       </div>
 
-      {error && (
-        <div className="flex items-center gap-2 text-red-600 text-sm">
-          <AlertCircle className="h-4 w-4" />
-          <span>{error}</span>
-        </div>
-      )}
-
-      {uploading && (
+      {/* File list */}
+      {files.length > 0 && (
         <div className="space-y-2">
-          <div className="flex justify-between text-sm">
-            <span>Uploading...</span>
-            <span>{progress}%</span>
-          </div>
-          <Progress value={progress} className="h-2" />
+          <h4 className="text-sm font-medium text-gray-700">Selected Files:</h4>
+          <ul className="space-y-2">
+            {files.map((file, index) => (
+              <li key={index} className="flex items-center justify-between bg-gray-50 p-2 rounded-md">
+                <div className="flex items-center">
+                  <span className="text-sm truncate max-w-[200px]">{file.name}</span>
+                  <span className="text-xs text-gray-500 ml-2">({(file.size / 1024 / 1024).toFixed(2)} MB)</span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => removeFile(index)}
+                  disabled={isUploading}
+                  className="h-8 w-8 p-0"
+                >
+                  <Trash2 className="h-4 w-4 text-gray-500" />
+                </Button>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
-      {success && (
-        <div className="flex items-center gap-2 text-green-600">
-          <CheckCircle className="h-5 w-5" />
-          <span>Upload successful! Redirecting to booking status...</span>
-        </div>
-      )}
-
-      <div className="flex gap-2 justify-end">
-        {file && !uploading && !success && (
-          <Button variant="outline" onClick={resetFileInput}>
-            Reset
-          </Button>
-        )}
-        <Button
-          onClick={handleUpload}
-          disabled={!file || uploading || success}
-          className={success ? "bg-green-600 hover:bg-green-700" : ""}
-        >
-          {uploading ? "Uploading..." : success ? "Uploaded" : "Upload"}
+      {files.length > 0 && !uploadSuccess && (
+        <Button onClick={handleUpload} className="w-full" disabled={isUploading}>
+          {isUploading ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Uploading {currentFileIndex + 1} of {files.length}...
+            </>
+          ) : (
+            `Upload ${files.length > 1 ? "Files" : "File"}`
+          )}
         </Button>
-      </div>
+      )}
+
+      {isUploading && (
+        <div className="space-y-2">
+          <Progress value={uploadProgress} className="h-2" />
+          <p className="text-xs text-center text-gray-500">
+            {uploadProgress}% complete • File {currentFileIndex + 1} of {files.length}
+          </p>
+        </div>
+      )}
+
+      {uploadError && (
+        <div className="flex items-center text-red-600 text-sm">
+          <XCircle className="h-4 w-4 mr-1" />
+          <span>{uploadError}</span>
+        </div>
+      )}
+
+      {uploadSuccess && (
+        <div className="flex items-center text-green-600 text-sm">
+          <CheckCircle className="h-4 w-4 mr-1" />
+          <span>Files uploaded successfully!</span>
+        </div>
+      )}
     </div>
   )
 }
-
-// Add default export for backward compatibility
-export default FileUpload
