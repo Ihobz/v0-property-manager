@@ -17,6 +17,8 @@ import { useAuth } from "@/lib/auth-provider"
 import { Loader2, Plus, Trash, ArrowLeft } from "lucide-react"
 // Add import for the Blob configuration check
 import { checkBlobConfiguration } from "@/lib/check-blob-config"
+import { toast } from "@/components/ui/use-toast"
+import { Progress } from "@/components/ui/progress"
 
 export default function NewPropertyPage() {
   const { isAdmin } = useAuth()
@@ -37,6 +39,7 @@ export default function NewPropertyPage() {
   const [primaryImageIndex, setPrimaryImageIndex] = useState(0)
   const [isUploading, setIsUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [uploadProgress, setUploadProgress] = useState(0)
 
   // Add state for Blob configuration status
   const [blobConfigured, setBlobConfigured] = useState<boolean | null>(null)
@@ -51,6 +54,11 @@ export default function NewPropertyPage() {
 
       if (!isConfigured) {
         setError(`Image uploads are not available: ${message}`)
+        toast({
+          variant: "destructive",
+          title: "Storage Configuration Error",
+          description: message,
+        })
       }
     }
 
@@ -79,13 +87,7 @@ export default function NewPropertyPage() {
     e.preventDefault()
     setError(null)
     setIsUploading(true)
-
-    // In the handleSubmit function, add a check for Blob configuration
-    if (!blobConfigured) {
-      setError(`Cannot upload images: ${configMessage || "Vercel Blob is not properly configured"}`)
-      setIsUploading(false)
-      return
-    }
+    setUploadProgress(0)
 
     try {
       // Validate inputs
@@ -97,25 +99,23 @@ export default function NewPropertyPage() {
         throw new Error("Please upload at least one image")
       }
 
-      console.log(`Starting upload process for ${images.length} images`)
-
       // Upload images to Vercel Blob
       const imageUrls: string[] = []
-      for (const image of images) {
-        console.log(`Uploading image: ${image.name}, size: ${image.size}, type: ${image.type}`)
+      let uploadedCount = 0
 
+      for (const image of images) {
         const result = await uploadPropertyImage(image)
 
         if (!result.success || !result.url) {
-          console.error("Image upload failed:", result.error)
           throw new Error(`Failed to upload image: ${result.error || "Unknown error"}`)
         }
 
-        console.log("Image uploaded successfully:", result.url)
         imageUrls.push(result.url)
+        uploadedCount++
+        setUploadProgress(Math.round((uploadedCount / images.length) * 50))
       }
 
-      console.log("All images uploaded successfully, creating property in database")
+      setUploadProgress(75)
 
       // Create property in database
       const amenitiesArray = amenities
@@ -140,18 +140,27 @@ export default function NewPropertyPage() {
         primaryImageIndex,
       })
 
+      setUploadProgress(100)
+
       if (!result.success) {
-        console.error("Property creation failed:", result.error)
         throw new Error(result.error || "Failed to create property")
       }
 
-      console.log("Property created successfully")
+      toast({
+        title: "Success",
+        description: "Property created successfully",
+      })
 
       // Redirect to admin dashboard
       router.push("/admin")
     } catch (err: any) {
       setError(err.message || "An error occurred")
       console.error("Error creating property:", err)
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: err.message || "Failed to create property",
+      })
     } finally {
       setIsUploading(false)
     }
@@ -169,6 +178,13 @@ export default function NewPropertyPage() {
         </CardHeader>
         <CardContent>
           {error && <div className="bg-red-50 text-red-700 p-4 rounded-md mb-6">{error}</div>}
+
+          {isUploading && (
+            <div className="mb-6">
+              <p className="text-sm text-gray-500 mb-2">Uploading property data...</p>
+              <Progress value={uploadProgress} className="h-2" />
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

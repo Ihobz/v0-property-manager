@@ -12,9 +12,9 @@ import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/ui/switch"
 import { uploadPropertyImage } from "@/lib/blob"
 import { getPropertyById, updateProperty } from "@/app/api/properties/actions"
-// Change the import from auth-context to auth-provider
 import { useAuth } from "@/lib/auth-provider"
 import { Loader2, Plus, Trash, ArrowLeft } from "lucide-react"
+import { toast } from "@/components/ui/use-toast"
 
 export default function EditPropertyPage() {
   const { isAdmin } = useAuth()
@@ -40,14 +40,19 @@ export default function EditPropertyPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isUploading, setIsUploading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [uploadProgress, setUploadProgress] = useState(0)
 
   useEffect(() => {
     async function loadProperty() {
       try {
+        if (!propertyId) {
+          throw new Error("Property ID is missing")
+        }
+
         const { property, error } = await getPropertyById(propertyId)
 
         if (error || !property) {
-          throw new Error("Failed to load property")
+          throw new Error(error || "Failed to load property")
         }
 
         setProperty(property)
@@ -70,6 +75,11 @@ export default function EditPropertyPage() {
       } catch (err: any) {
         setError(err.message || "An error occurred")
         console.error("Error loading property:", err)
+        toast({
+          variant: "destructive",
+          title: "Error",
+          description: err.message || "Failed to load property",
+        })
       } finally {
         setIsLoading(false)
       }
@@ -105,6 +115,7 @@ export default function EditPropertyPage() {
     e.preventDefault()
     setError(null)
     setIsUploading(true)
+    setUploadProgress(0)
 
     try {
       // Validate inputs
@@ -118,12 +129,17 @@ export default function EditPropertyPage() {
 
       // Upload new images to Vercel Blob
       const newImageUrls: string[] = []
+      let uploadedCount = 0
+
       for (const image of newImages) {
-        const result = await uploadPropertyImage(image)
-        if (!result.success || !result.url) {
-          throw new Error("Failed to upload image")
+        const uploadResult = await uploadPropertyImage(image)
+        if (!uploadResult.success || !uploadResult.url) {
+          throw new Error(`Failed to upload image: ${uploadResult.error || "Unknown error"}`)
         }
-        newImageUrls.push(result.url)
+
+        newImageUrls.push(uploadResult.url)
+        uploadedCount++
+        setUploadProgress(Math.round((uploadedCount / newImages.length) * 50))
       }
 
       // Determine images to delete (compare original property images with current existingImages)
@@ -134,6 +150,8 @@ export default function EditPropertyPage() {
         .split(",")
         .map((item) => item.trim())
         .filter((item) => item.length > 0)
+
+      setUploadProgress(75)
 
       const result = await updateProperty({
         id: propertyId,
@@ -154,15 +172,27 @@ export default function EditPropertyPage() {
         primaryImageUrl: primaryImageUrl || undefined,
       })
 
+      setUploadProgress(100)
+
       if (!result.success) {
-        throw new Error("Failed to update property")
+        throw new Error(result.error || "Failed to update property")
       }
+
+      toast({
+        title: "Success",
+        description: "Property updated successfully",
+      })
 
       // Redirect to admin dashboard
       router.push("/admin")
     } catch (err: any) {
       setError(err.message || "An error occurred")
       console.error("Error updating property:", err)
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: err.message || "Failed to update property",
+      })
     } finally {
       setIsUploading(false)
     }

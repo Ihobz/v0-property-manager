@@ -1,7 +1,52 @@
 import { put } from "@vercel/blob"
 import { logUploadEvent, logError } from "@/lib/logging"
 
-// Upload payment proof for a booking
+/**
+ * Uploads a file to Vercel Blob storage with proper error handling
+ * @param file The file to upload
+ * @param path The path to store the file at
+ * @param token Optional token override
+ * @returns Success status and URL or error
+ */
+async function uploadToBlob(file: File, path: string, token?: string) {
+  try {
+    // Check if blob token is available
+    const blobToken = token || process.env.BLOB_READ_WRITE_TOKEN
+
+    if (!blobToken) {
+      logError("Missing BLOB_READ_WRITE_TOKEN for upload", { path })
+      return {
+        success: false,
+        error: "Storage configuration error: Missing token",
+      }
+    }
+
+    // Upload to Vercel Blob with explicit token
+    const blob = await put(path, file, {
+      access: "public",
+      token: blobToken,
+    })
+
+    return {
+      success: true,
+      url: blob.url,
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown upload error"
+    logError(`Blob upload error: ${errorMessage}`, { path, error })
+    return {
+      success: false,
+      error: errorMessage,
+    }
+  }
+}
+
+/**
+ * Uploads a payment proof for a booking
+ * @param file The payment proof file
+ * @param bookingId The booking ID
+ * @returns Success status and URL or error
+ */
 export async function uploadPaymentProof(file: File, bookingId: string) {
   try {
     logUploadEvent(`Uploading payment proof for booking ${bookingId}`, "info")
@@ -9,16 +54,29 @@ export async function uploadPaymentProof(file: File, bookingId: string) {
     // Create a unique filename with booking ID and timestamp
     const filename = `payment-proof-${bookingId}-${Date.now()}.${file.name.split(".").pop()}`
 
-    // Upload to Vercel Blob
-    const result = await put(filename, file, {
-      access: "public",
+    // Use the API route for uploading to ensure server-side token access
+    const formData = new FormData()
+    formData.append("file", file)
+    formData.append("folder", "payment-proofs")
+    formData.append("bookingId", bookingId)
+    formData.append("type", "payment")
+
+    const response = await fetch("/api/upload", {
+      method: "POST",
+      body: formData,
     })
 
-    logUploadEvent(`Payment proof uploaded successfully for booking ${bookingId}`, "info", { url: result.url })
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error || "Failed to upload payment proof")
+    }
+
+    const data = await response.json()
+    logUploadEvent(`Payment proof uploaded successfully for booking ${bookingId}`, "info", { url: data.url })
 
     return {
       success: true,
-      url: result.url,
+      url: data.url,
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error uploading payment proof"
@@ -30,24 +88,23 @@ export async function uploadPaymentProof(file: File, bookingId: string) {
   }
 }
 
-// Upload tenant document
+/**
+ * Uploads a tenant ID document
+ * @param file The ID document file
+ * @param bookingId The booking ID
+ * @returns Success status and URL or error
+ */
 export async function uploadTenantDocument(file: File, bookingId: string) {
   try {
-    // Check if blob token is available
-    if (!process.env.NEXT_PUBLIC_SITE_URL || !process.env.BLOB_READ_WRITE_TOKEN) {
-      console.error("Missing environment variables for Blob storage")
-      return { success: false, error: "Storage configuration error" }
-    }
-
     // Create a unique filename with booking ID and timestamp
     const timestamp = new Date().getTime()
     const fileExtension = file.name.split(".").pop()
     const fileName = `tenant-id-${bookingId}-${timestamp}.${fileExtension}`
 
-    // Upload to Vercel Blob
+    // Upload to Vercel Blob via API route
     const formData = new FormData()
     formData.append("file", file)
-    formData.append("filename", fileName)
+    formData.append("folder", "tenant-ids")
     formData.append("bookingId", bookingId)
     formData.append("type", "id")
 
@@ -72,18 +129,32 @@ export async function uploadTenantDocument(file: File, bookingId: string) {
   }
 }
 
-// Generic file upload function
+/**
+ * Generic file upload function
+ * @param file The file to upload
+ * @param path The path to store the file at
+ * @returns Success status and URL or error
+ */
 export async function uploadFile(file: File, path: string) {
   try {
-    // Upload to Vercel Blob
-    const result = await put(path, file, {
-      access: "public",
+    // Upload to Vercel Blob via API route
+    const formData = new FormData()
+    formData.append("file", file)
+    formData.append("path", path)
+    formData.append("type", "generic")
+
+    const response = await fetch("/api/upload", {
+      method: "POST",
+      body: formData,
     })
 
-    return {
-      success: true,
-      url: result.url,
+    if (!response.ok) {
+      const errorData = await response.json()
+      throw new Error(errorData.error || "Failed to upload file")
     }
+
+    const data = await response.json()
+    return { success: true, url: data.url }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error uploading file"
     logError(`Error uploading file: ${errorMessage}`, { path, error })
@@ -94,19 +165,24 @@ export async function uploadFile(file: File, path: string) {
   }
 }
 
-// Upload property image
-export async function uploadPropertyImage(file: File, propertyId: string) {
+/**
+ * Uploads a property image
+ * @param file The image file
+ * @param propertyId The property ID
+ * @returns Success status and URL or error
+ */
+export async function uploadPropertyImage(file: File) {
   try {
-    logUploadEvent(`Uploading property image for property ${propertyId}`, "info")
+    // Create a unique filename with timestamp
+    const timestamp = new Date().getTime()
+    const fileExtension = file.name.split(".").pop()
+    const fileName = `property-image-${timestamp}.${fileExtension}`
 
-    // Create a unique filename with property ID and timestamp
-    const filename = `property-image-${propertyId}-${Date.now()}.${file.name.split(".").pop()}`
-
-    // Use the API route for uploading instead of direct Blob access
+    // Upload to Vercel Blob via API route
     const formData = new FormData()
     formData.append("file", file)
-    formData.append("filename", filename)
-    formData.append("propertyId", propertyId)
+    formData.append("folder", "property-images")
+    formData.append("filename", fileName)
     formData.append("type", "property")
 
     const response = await fetch("/api/upload", {
@@ -120,18 +196,19 @@ export async function uploadPropertyImage(file: File, propertyId: string) {
     }
 
     const data = await response.json()
-    logUploadEvent(`Property image uploaded successfully for property ${propertyId}`, "info", { url: data.url })
-
     return {
       success: true,
       url: data.url,
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error uploading property image"
-    logError(`Error uploading property image: ${errorMessage}`, { propertyId, error })
+    logError(`Error uploading property image: ${errorMessage}`, { error })
     return {
       success: false,
       error: errorMessage,
     }
   }
 }
+
+// Export the internal function for testing
+export { uploadToBlob }

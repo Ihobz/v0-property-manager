@@ -28,7 +28,12 @@ import {
 } from "lucide-react"
 import { useAuth } from "@/lib/auth-provider"
 import { toast } from "@/components/ui/use-toast"
-import { updateBookingStatus, getBookingById, updateBookingCleaningFee } from "@/app/api/bookings/actions"
+import {
+  updateBookingStatus,
+  getBookingById,
+  updateBookingCleaningFee,
+  getIdDocuments,
+} from "@/app/api/bookings/actions"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -56,6 +61,7 @@ export default function BookingDetailsPage() {
   const [confirmationMessage, setConfirmationMessage] = useState("")
   const [retryCount, setRetryCount] = useState(0)
   const [debugInfo, setDebugInfo] = useState<any>(null)
+  const [idDocuments, setIdDocuments] = useState<string[]>([])
 
   // State for confirmation dialogs
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false)
@@ -117,6 +123,9 @@ export default function BookingDetailsPage() {
         match: bookingId === fetchedBooking.id,
         propertyData: propertyData,
       })
+
+      // Load ID documents
+      loadIdDocuments(bookingId)
     } catch (err) {
       console.error("Error loading booking:", err)
       setError(err instanceof Error ? err.message : "Failed to load booking details")
@@ -131,6 +140,18 @@ export default function BookingDetailsPage() {
       })
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  // Function to load ID documents
+  const loadIdDocuments = async (id: string) => {
+    try {
+      const { success, documents } = await getIdDocuments(id)
+      if (success && documents.length > 0) {
+        setIdDocuments(documents)
+      }
+    } catch (err) {
+      console.error("Error loading ID documents:", err)
     }
   }
 
@@ -514,31 +535,28 @@ export default function BookingDetailsPage() {
                   <CardTitle className="text-gouna-blue-dark">Tenant Documents</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  {booking.tenant_id &&
-                  (Array.isArray(booking.tenant_id) ? booking.tenant_id.length > 0 : booking.tenant_id) ? (
+                  {idDocuments.length > 0 ? (
                     <div className="space-y-6">
-                      {(Array.isArray(booking.tenant_id) ? booking.tenant_id : [booking.tenant_id]).map(
-                        (id: string, index: number) => (
-                          <div key={index}>
-                            <h3 className="text-sm font-medium text-gray-500 mb-3">Tenant ID #{index + 1}</h3>
-                            <div className="relative h-80 rounded-md overflow-hidden border">
-                              <Image
-                                src={id || "/placeholder.svg"}
-                                alt={`Tenant ID ${index + 1}`}
-                                fill
-                                className="object-contain"
-                              />
-                            </div>
-                            <div className="mt-4 flex justify-end">
-                              <a href={id} target="_blank" rel="noopener noreferrer" className="inline-flex">
-                                <Button variant="outline" className="flex items-center">
-                                  <Download className="h-4 w-4 mr-2" /> Download
-                                </Button>
-                              </a>
-                            </div>
+                      {idDocuments.map((url, index) => (
+                        <div key={index}>
+                          <h3 className="text-sm font-medium text-gray-500 mb-3">Tenant ID #{index + 1}</h3>
+                          <div className="relative h-80 rounded-md overflow-hidden border">
+                            <Image
+                              src={url || "/placeholder.svg"}
+                              alt={`Tenant ID ${index + 1}`}
+                              fill
+                              className="object-contain"
+                            />
                           </div>
-                        ),
-                      )}
+                          <div className="mt-4 flex justify-end">
+                            <a href={url} target="_blank" rel="noopener noreferrer" className="inline-flex">
+                              <Button variant="outline" className="flex items-center">
+                                <Download className="h-4 w-4 mr-2" /> Download
+                              </Button>
+                            </a>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   ) : (
                     <div className="text-center py-8">

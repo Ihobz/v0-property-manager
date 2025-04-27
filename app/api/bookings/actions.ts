@@ -5,6 +5,8 @@ import { revalidatePath } from "next/cache"
 import { sendBookingConfirmationEmail } from "@/lib/email-service"
 import { logBookingEvent, logError, logInfo } from "@/lib/logging"
 import { put } from "@vercel/blob"
+import { createClient } from "@/lib/supabase/server"
+import { v4 as uuidv4 } from "uuid"
 
 // Type for booking data
 type BookingData = {
@@ -195,15 +197,15 @@ export async function getBookings() {
       }
     }
 
-    // Set a timeout for the database query
+    // Increase timeout for the database query to 15 seconds (from 5)
     const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error("Database query timed out")), 5000)
+      setTimeout(() => reject(new Error("Database query timed out")), 15000)
     })
 
     // Try to fetch bookings with a timeout
     try {
-      // First, get all bookings
-      const bookingsPromise = supabase.from("bookings").select("*").order("created_at", { ascending: false })
+      // First, get all bookings - limit to 100 most recent for performance
+      const bookingsPromise = supabase.from("bookings").select("*").order("created_at", { ascending: false }).limit(100) // Add limit to improve performance
 
       // Race the query against the timeout
       const { data: bookingsData, error: bookingsError } = (await Promise.race([
@@ -295,73 +297,56 @@ export async function getBookings() {
   }
 }
 
-export async function getBookingById(bookingId: string) {
+// Function to get a booking by ID
+export async function getBookingById(id: string) {
   try {
-    // Use admin client to bypass RLS
-    const supabase = createAdminSupabaseClient()
+    logInfo(`Fetching booking ${id}`)
+    const supabase = createClient()
 
-    console.log(`Fetching booking with ID: ${bookingId}`)
-
-    // First, get the booking without joining properties
-    const { data: booking, error: bookingError } = await supabase
+    // Use maybeSingle() instead of single() to avoid the error when no rows are returned
+    const { data: booking, error } = await supabase
       .from("bookings")
-      .select("*")
-      .eq("id", bookingId)
-      .single()
+      .select(`
+        *,
+        property:property_id (
+          id,
+          title,
+          name,
+          location,
+          bedrooms,
+          bathrooms,
+          guests,
+          images
+        )
+      `)
+      .eq("id", id)
+      .maybeSingle()
 
-    if (bookingError) {
-      logError(`Error fetching booking: ${bookingError.message}`, { bookingId, error: bookingError })
+    if (error) {
+      logError(`Error fetching booking ${id}`, error)
       return {
         booking: null,
-        error: bookingError.message,
-        details: {
-          code: bookingError.code,
-          hint: bookingError.hint,
-          message: bookingError.message,
-        },
+        error: `Error fetching booking: ${error.message}`,
+        details: error,
       }
     }
 
-    // If booking exists, fetch the associated property separately
-    if (booking && booking.property_id) {
-      const { data: property, error: propertyError } = await supabase
-        .from("properties")
-        .select("id, title, description, location, price, bedrooms, bathrooms, guests, amenities")
-        .eq("id", booking.property_id)
-        .single()
-
-      if (!propertyError && property) {
-        // Add property to booking object
-        booking.property = property
-
-        // Get property images
-        const { data: imageData, error: imageError } = await supabase
-          .from("property_images")
-          .select("url, is_primary")
-          .eq("property_id", property.id)
-          .order("is_primary", { ascending: false })
-
-        if (!imageError && imageData) {
-          // Add images array to the property
-          booking.property.images = imageData.map((img) => img.url)
-        } else {
-          console.warn(`Could not fetch images for property ${property.id}:`, imageError)
-          booking.property.images = []
-        }
-      } else {
-        console.warn(`Could not fetch property for booking ${bookingId}:`, propertyError)
-        booking.property = null
+    if (!booking) {
+      logError(`Booking ${id} not found`)
+      return {
+        booking: null,
+        error: "Booking not found",
+        details: { id },
       }
     }
 
     return { booking, error: null }
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error fetching booking"
-    logError(`Exception fetching booking: ${errorMessage}`, { bookingId, error })
+  } catch (error: any) {
+    logError(`Error in getBookingById for ${id}`, error)
     return {
       booking: null,
-      error: errorMessage,
-      details: error instanceof Error ? error.stack : null,
+      error: `Failed to retrieve booking: ${error.message}`,
+      details: error,
     }
   }
 }
@@ -429,95 +414,71 @@ export async function getBookingsByEmail(email: string) {
   }
 }
 
-export async function updateBookingStatus(bookingId: string, status: string) {
+// Function to update booking status
+export async function updateBookingStatus(id: string, status: string) {
   try {
-    // Use admin client to bypass RLS
-    const supabase = createAdminSupabaseClient()
+    const supabase = createClient()
 
-    const { error } = await supabase
-      .from("bookings")
-      .update({ status, updated_at: new Date().toISOString() })
-      .eq("id", bookingId)
+    const { data, error } = await supabase.from("bookings").update({ status }).eq("id", id).select().single()
 
     if (error) {
-      logError(`Error updating booking status: ${error.message}`, { bookingId, status, error })
+      logError(`Error updating booking status for ${id}`, error)
       return { success: false, error: error.message }
     }
 
-    // Revalidate relevant paths
-    revalidatePath(`/booking-status/${bookingId}`)
-    revalidatePath(`/admin/bookings/${bookingId}`)
     revalidatePath("/admin/bookings")
+    revalidatePath(`/admin/bookings/${id}`)
 
-    return { success: true }
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error updating booking status"
-    logError(`Exception updating booking status: ${errorMessage}`, { bookingId, status, error })
-    return { success: false, error: errorMessage }
+    return { success: true, data }
+  } catch (error: any) {
+    logError(`Error in updateBookingStatus for ${id}`, error)
+    return { success: false, error: error.message }
   }
 }
 
 /**
  * Updates the cleaning fee for a booking
  */
-export async function updateBookingCleaningFee(bookingId: string, cleaningFee: number) {
-  console.log(`Updating cleaning fee for booking ID: "${bookingId}" to $${cleaningFee}`)
-  await logBookingEvent(`Updating cleaning fee for booking ID: ${bookingId} to $${cleaningFee}`, "info")
-
+// Function to update cleaning fee
+export async function updateBookingCleaningFee(id: string, cleaningFee: number) {
   try {
-    if (!bookingId) {
-      await logBookingEvent("No booking ID provided for cleaning fee update", "error")
-      return { success: false, error: "No booking ID provided" }
-    }
-
-    const supabase = createServerSupabaseClient()
+    const supabase = createClient()
 
     // First get the current booking to calculate the new total price
     const { data: booking, error: fetchError } = await supabase
       .from("bookings")
       .select("base_price")
-      .eq("id", bookingId)
-      .maybeSingle()
+      .eq("id", id)
+      .single()
 
     if (fetchError) {
-      await logBookingEvent("Error fetching booking for cleaning fee update", "error", { fetchError, bookingId })
-      console.error("Error fetching booking for cleaning fee update:", fetchError)
       return { success: false, error: fetchError.message }
     }
 
-    // Calculate new total price
-    const basePrice = booking?.base_price || 0
-    const totalPrice = basePrice + cleaningFee
+    const totalPrice = booking.base_price + cleaningFee
 
-    // Update the booking with new cleaning fee and total price
-    const { error: updateError } = await supabase
+    const { data, error } = await supabase
       .from("bookings")
       .update({
         cleaning_fee: cleaningFee,
         total_price: totalPrice,
       })
-      .eq("id", bookingId)
+      .eq("id", id)
+      .select()
+      .single()
 
-    if (updateError) {
-      await logBookingEvent("Error updating cleaning fee", "error", { updateError, bookingId })
-      console.error("Error updating cleaning fee:", updateError)
-      return { success: false, error: updateError.message }
+    if (error) {
+      logError(`Error updating cleaning fee for ${id}`, error)
+      return { success: false, error: error.message }
     }
 
-    await logBookingEvent("Cleaning fee updated successfully", "info", { bookingId, cleaningFee, totalPrice })
-
-    // Revalidate paths
     revalidatePath("/admin/bookings")
-    revalidatePath(`/admin/bookings/${bookingId}`)
+    revalidatePath(`/admin/bookings/${id}`)
 
-    return { success: true }
-  } catch (error) {
-    await logBookingEvent("Unexpected error updating cleaning fee", "error", { error, bookingId })
-    console.error("Unexpected error updating cleaning fee:", error)
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "An unexpected error occurred",
-    }
+    return { success: true, data }
+  } catch (error: any) {
+    logError(`Error in updateBookingCleaningFee for ${id}`, error)
+    return { success: false, error: error.message }
   }
 }
 
@@ -594,138 +555,86 @@ export async function updatePaymentProof(bookingId: string, fileUrl: string) {
  * Add tenant ID document to a booking
  * This version uses a more resilient approach that doesn't rely on specific columns
  */
-export async function addTenantIdDocument(bookingId: string, fileUrl: string) {
+// Function to add tenant ID document
+export async function addTenantIdDocument(bookingId: string, file: File) {
   try {
-    // Use admin client to bypass RLS and ensure we have proper access
-    const supabase = createAdminSupabaseClient()
-
-    console.log(`Adding ID document to booking ${bookingId}`)
-
-    // First, fetch the booking to see what columns are available
-    const { data: booking, error: fetchError } = await supabase
-      .from("bookings")
-      .select("*")
-      .eq("id", bookingId)
-      .maybeSingle()
-
-    if (fetchError) {
-      console.error(`Error fetching booking for ID document update:`, fetchError)
-      return { success: false, error: fetchError.message }
+    if (!file) {
+      return { success: false, error: "No file provided" }
     }
 
-    if (!booking) {
-      console.error("Booking not found for ID document update:", bookingId)
-      return { success: false, error: "Booking not found" }
-    }
+    // Upload to Vercel Blob
+    const filename = `tenant-id-${bookingId}-${uuidv4()}.${file.name.split(".").pop()}`
+    const blob = await put(filename, file, { access: "public" })
 
-    // Log the booking object to see what columns are available
-    console.log("Booking object structure:", Object.keys(booking))
+    const supabase = createClient()
 
-    // Try different approaches to store the document URL
+    // Check if the bookings table has a tenant_id column
+    const { data: tableInfo } = await supabase.from("bookings").select("tenant_id").eq("id", bookingId).single()
 
-    // Approach 1: Try to use notes field as a fallback
-    if ("notes" in booking) {
-      const currentNotes = booking.notes || ""
-      const updatedNotes = currentNotes ? `${currentNotes}\n\nID Document: ${fileUrl}` : `ID Document: ${fileUrl}`
+    let updateResult
 
-      const { error: notesError } = await supabase
+    // If tenant_id exists as a column
+    if (tableInfo && "tenant_id" in tableInfo) {
+      // Check if tenant_id is already an array
+      if (Array.isArray(tableInfo.tenant_id)) {
+        // Add to existing array
+        updateResult = await supabase
+          .from("bookings")
+          .update({ tenant_id: [...tableInfo.tenant_id, blob.url] })
+          .eq("id", bookingId)
+      } else if (tableInfo.tenant_id) {
+        // Convert existing string to array with new URL
+        updateResult = await supabase
+          .from("bookings")
+          .update({ tenant_id: [tableInfo.tenant_id, blob.url] })
+          .eq("id", bookingId)
+      } else {
+        // Set as first URL
+        updateResult = await supabase
+          .from("bookings")
+          .update({ tenant_id: [blob.url] })
+          .eq("id", bookingId)
+      }
+    } else {
+      // Try to store in notes, special_requests, or comments field
+      const { data: bookingData } = await supabase
         .from("bookings")
-        .update({
-          notes: updatedNotes,
-          updated_at: new Date().toISOString(),
-        })
+        .select("notes, special_requests, comments")
         .eq("id", bookingId)
+        .single()
 
-      if (!notesError) {
-        console.log("Successfully stored ID document URL in notes field")
+      if (bookingData) {
+        const idPrefix = "TENANT_ID_DOC:"
+        const idUrl = `${idPrefix} ${blob.url}`
 
-        // Revalidate the booking status page
-        revalidatePath(`/booking-status/${bookingId}`)
-
-        return {
-          success: true,
-          message: "ID document added successfully (stored in notes)",
-          columnUsed: "notes",
+        if ("notes" in bookingData) {
+          const notes = bookingData.notes ? `${bookingData.notes}\n${idUrl}` : idUrl
+          updateResult = await supabase.from("bookings").update({ notes }).eq("id", bookingId)
+        } else if ("special_requests" in bookingData) {
+          const special_requests = bookingData.special_requests ? `${bookingData.special_requests}\n${idUrl}` : idUrl
+          updateResult = await supabase.from("bookings").update({ special_requests }).eq("id", bookingId)
+        } else if ("comments" in bookingData) {
+          const comments = bookingData.comments ? `${bookingData.comments}\n${idUrl}` : idUrl
+          updateResult = await supabase.from("bookings").update({ comments }).eq("id", bookingId)
+        } else {
+          return {
+            success: false,
+            error: "No suitable field found to store document URL",
+          }
         }
       }
     }
 
-    // Approach 2: Try to use special_requests field as another fallback
-    if ("special_requests" in booking) {
-      const currentRequests = booking.special_requests || ""
-      const updatedRequests = currentRequests
-        ? `${currentRequests}\n\nID Document: ${fileUrl}`
-        : `ID Document: ${fileUrl}`
-
-      const { error: requestsError } = await supabase
-        .from("bookings")
-        .update({
-          special_requests: updatedRequests,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", bookingId)
-
-      if (!requestsError) {
-        console.log("Successfully stored ID document URL in special_requests field")
-
-        // Revalidate the booking status page
-        revalidatePath(`/booking-status/${bookingId}`)
-
-        return {
-          success: true,
-          message: "ID document added successfully (stored in special_requests)",
-          columnUsed: "special_requests",
-        }
-      }
+    if (updateResult?.error) {
+      logError(`Error updating tenant ID for booking ${bookingId}`, updateResult.error)
+      return { success: false, error: updateResult.error.message }
     }
 
-    // Approach 3: Try to use comments field as another fallback
-    if ("comments" in booking) {
-      const currentComments = booking.comments || ""
-      const updatedComments = currentComments
-        ? `${currentComments}\n\nID Document: ${fileUrl}`
-        : `ID Document: ${fileUrl}`
-
-      const { error: commentsError } = await supabase
-        .from("bookings")
-        .update({
-          comments: updatedComments,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", bookingId)
-
-      if (!commentsError) {
-        console.log("Successfully stored ID document URL in comments field")
-
-        // Revalidate the booking status page
-        revalidatePath(`/booking-status/${bookingId}`)
-
-        return {
-          success: true,
-          message: "ID document added successfully (stored in comments)",
-          columnUsed: "comments",
-        }
-      }
-    }
-
-    // If we've reached here, we couldn't find a suitable column to store the document URL
-    // Return a success anyway, but with a warning
-    console.warn("Could not find a suitable column to store ID document URL")
-
-    // Revalidate the booking status page anyway
-    revalidatePath(`/booking-status/${bookingId}`)
-
-    return {
-      success: true,
-      warning: "Document uploaded but could not be linked to booking record",
-      documentUrl: fileUrl,
-    }
-  } catch (error) {
-    console.error("Unexpected error in addTenantIdDocument:", error)
-    return {
-      success: false,
-      error: "An unexpected error occurred while adding ID document.",
-    }
+    revalidatePath(`/admin/bookings/${bookingId}`)
+    return { success: true, url: blob.url }
+  } catch (error: any) {
+    logError(`Error in addTenantIdDocument for ${bookingId}`, error)
+    return { success: false, error: error.message }
   }
 }
 
@@ -757,7 +666,8 @@ export async function uploadFile(formData: FormData) {
     if (uploadType === "payment") {
       return await updatePaymentProof(bookingId, blob.url)
     } else if (uploadType === "id") {
-      return await addTenantIdDocument(bookingId, blob.url)
+      // return await addTenantIdDocument(bookingId, blob.url)
+      return { success: false, error: "Deprecated: Use new addTenantIdDocument function" }
     } else {
       return { success: false, error: "Invalid upload type" }
     }
@@ -767,6 +677,58 @@ export async function uploadFile(formData: FormData) {
       success: false,
       error: "An unexpected error occurred while uploading the file.",
     }
+  }
+}
+
+// Function to get ID documents from a booking
+export async function getIdDocuments(bookingId: string) {
+  try {
+    const supabase = createClient()
+
+    // First try to get from tenant_id column
+    const { data: booking } = await supabase
+      .from("bookings")
+      .select("tenant_id, notes, special_requests, comments")
+      .eq("id", bookingId)
+      .single()
+
+    if (!booking) {
+      return { success: false, documents: [] }
+    }
+
+    const documents: string[] = []
+
+    // Check if tenant_id exists and has data
+    if (booking.tenant_id) {
+      if (Array.isArray(booking.tenant_id)) {
+        documents.push(...booking.tenant_id)
+      } else if (typeof booking.tenant_id === "string") {
+        documents.push(booking.tenant_id)
+      }
+    }
+
+    // If no documents found in tenant_id, check text fields
+    if (documents.length === 0) {
+      const idPrefix = "TENANT_ID_DOC:"
+      const textFields = ["notes", "special_requests", "comments"]
+
+      textFields.forEach((field) => {
+        if (booking[field] && typeof booking[field] === "string") {
+          const lines = booking[field].split("\n")
+          lines.forEach((line) => {
+            if (line.startsWith(idPrefix)) {
+              const url = line.substring(idPrefix.length).trim()
+              documents.push(url)
+            }
+          })
+        }
+      })
+    }
+
+    return { success: true, documents }
+  } catch (error: any) {
+    logError(`Error in getIdDocuments for ${bookingId}`, error)
+    return { success: false, documents: [], error: error.message }
   }
 }
 
@@ -867,5 +829,19 @@ export async function getTableInfo(tableName: string) {
       columns: [],
       error: error instanceof Error ? error.message : "An unexpected error occurred",
     }
+  }
+}
+
+export async function logBookingActivity(bookingId: string, activity: string) {
+  try {
+    // Log the activity to the console
+    console.log(`Booking ${bookingId}: ${activity}`)
+
+    // You could also log to a database table if needed
+
+    return { success: true }
+  } catch (error) {
+    console.error("Error logging booking activity:", error)
+    return { success: false }
   }
 }

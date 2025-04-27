@@ -1,8 +1,9 @@
 "use server"
 
-import { createServerSupabaseClient } from "@/lib/supabase/server"
+import { createAdminDatabaseClient } from "@/lib/database/client"
 import { revalidatePath } from "next/cache"
 import { redirect } from "next/navigation"
+import { logError, logInfo } from "@/lib/logging"
 
 // Type for property data
 type PropertyData = {
@@ -18,10 +19,12 @@ type PropertyData = {
   featured: boolean
 }
 
-// Get all properties
+/**
+ * Get all properties with proper error handling
+ */
 export async function getProperties() {
   try {
-    const supabase = createServerSupabaseClient()
+    const supabase = createAdminDatabaseClient()
 
     const { data: properties, error } = await supabase
       .from("properties")
@@ -29,7 +32,7 @@ export async function getProperties() {
       .order("created_at", { ascending: false })
 
     if (error) {
-      console.error("Error fetching properties:", error)
+      logError("Error fetching properties", { error })
       return { properties: [], error: error.message }
     }
 
@@ -50,15 +53,17 @@ export async function getProperties() {
 
     return { properties: processedProperties, error: null }
   } catch (error) {
-    console.error("Error in getProperties:", error)
+    logError("Error in getProperties", { error })
     return { properties: [], error: "Failed to fetch properties" }
   }
 }
 
-// Get featured properties
+/**
+ * Get featured properties with proper error handling
+ */
 export async function getFeaturedProperties() {
   try {
-    const supabase = createServerSupabaseClient()
+    const supabase = createAdminDatabaseClient()
 
     const { data: properties, error } = await supabase
       .from("properties")
@@ -67,7 +72,7 @@ export async function getFeaturedProperties() {
       .order("created_at", { ascending: false })
 
     if (error) {
-      console.error("Error fetching featured properties:", error)
+      logError("Error fetching featured properties", { error })
       return { properties: [], error: error.message }
     }
 
@@ -88,15 +93,21 @@ export async function getFeaturedProperties() {
 
     return { properties: processedProperties, error: null }
   } catch (error) {
-    console.error("Error in getFeaturedProperties:", error)
+    logError("Error in getFeaturedProperties", { error })
     return { properties: [], error: "Failed to fetch featured properties" }
   }
 }
 
-// Get property by ID
+/**
+ * Get property by ID with proper error handling
+ */
 export async function getPropertyById(id: string) {
   try {
-    const supabase = createServerSupabaseClient()
+    if (!id) {
+      return { property: null, error: "Invalid property ID" }
+    }
+
+    const supabase = createAdminDatabaseClient()
 
     const { data: property, error } = await supabase
       .from("properties")
@@ -105,7 +116,7 @@ export async function getPropertyById(id: string) {
       .single()
 
     if (error) {
-      console.error("Error fetching property:", error)
+      logError("Error fetching property", { id, error })
       return { property: null, error: error.message }
     }
 
@@ -124,12 +135,14 @@ export async function getPropertyById(id: string) {
 
     return { property: processedProperty, error: null }
   } catch (error) {
-    console.error("Error in getPropertyById:", error)
+    logError("Error in getPropertyById", { error })
     return { property: null, error: "Failed to fetch property" }
   }
 }
 
-// Create a new property
+/**
+ * Create a new property with proper error handling and RLS bypass
+ */
 export async function createProperty({
   property,
   imageUrls,
@@ -140,13 +153,11 @@ export async function createProperty({
   primaryImageIndex: number
 }) {
   try {
-    console.log("Creating property with data:", property)
-    console.log("Image URLs:", imageUrls)
-    console.log("Primary image index:", primaryImageIndex)
+    logInfo("Creating property", { property, imageCount: imageUrls.length, primaryImageIndex })
 
-    const supabase = createServerSupabaseClient()
+    const supabase = createAdminDatabaseClient()
 
-    // Insert property
+    // Start a transaction
     const { data: newProperty, error: propertyError } = await supabase
       .from("properties")
       .insert([property])
@@ -154,11 +165,11 @@ export async function createProperty({
       .single()
 
     if (propertyError) {
-      console.error("Error creating property in database:", propertyError)
+      logError("Error creating property in database", { propertyError, property })
       return { success: false, error: propertyError.message }
     }
 
-    console.log("Property created in database:", newProperty.id)
+    logInfo("Property created in database", { propertyId: newProperty.id })
 
     // Insert property images
     if (imageUrls.length > 0) {
@@ -168,16 +179,16 @@ export async function createProperty({
         is_primary: index === primaryImageIndex,
       }))
 
-      console.log("Inserting property images:", propertyImages)
+      logInfo("Inserting property images", { propertyId: newProperty.id, imageCount: propertyImages.length })
 
       const { error: imagesError } = await supabase.from("property_images").insert(propertyImages)
 
       if (imagesError) {
-        console.error("Error adding property images to database:", imagesError)
+        logError("Error adding property images to database", { imagesError, propertyId: newProperty.id })
         return { success: false, error: imagesError.message }
       }
 
-      console.log("Property images added to database successfully")
+      logInfo("Property images added to database successfully", { propertyId: newProperty.id })
     }
 
     // Revalidate paths
@@ -187,12 +198,14 @@ export async function createProperty({
 
     return { success: true, property: newProperty }
   } catch (error) {
-    console.error("Error in createProperty:", error)
+    logError("Error in createProperty", { error })
     return { success: false, error: error instanceof Error ? error.message : "Failed to create property" }
   }
 }
 
-// Update a property
+/**
+ * Update a property with proper error handling and RLS bypass
+ */
 export async function updateProperty({
   id,
   data,
@@ -207,13 +220,13 @@ export async function updateProperty({
   primaryImageUrl?: string
 }) {
   try {
-    const supabase = createServerSupabaseClient()
+    const supabase = createAdminDatabaseClient()
 
     // Update property
     const { error: updateError } = await supabase.from("properties").update(data).eq("id", id)
 
     if (updateError) {
-      console.error("Error updating property:", updateError)
+      logError("Error updating property", { updateError, propertyId: id })
       return { success: false, error: updateError.message }
     }
 
@@ -224,7 +237,7 @@ export async function updateProperty({
       const { error: deleteError } = await supabase.from("property_images").delete().in("url", imagesToDelete)
 
       if (deleteError) {
-        console.error("Error deleting property images:", deleteError)
+        logError("Error deleting property images", { deleteError, propertyId: id })
         return { success: false, error: deleteError.message }
       }
     }
@@ -240,7 +253,7 @@ export async function updateProperty({
       const { error: addError } = await supabase.from("property_images").insert(newImages)
 
       if (addError) {
-        console.error("Error adding new property images:", addError)
+        logError("Error adding new property images", { addError, propertyId: id })
         return { success: false, error: addError.message }
       }
     }
@@ -258,7 +271,7 @@ export async function updateProperty({
         .eq("property_id", id)
 
       if (primaryError) {
-        console.error("Error updating primary image:", primaryError)
+        logError("Error updating primary image", { primaryError, propertyId: id })
         return { success: false, error: primaryError.message }
       }
     }
@@ -271,21 +284,23 @@ export async function updateProperty({
 
     return { success: true }
   } catch (error) {
-    console.error("Error in updateProperty:", error)
+    logError("Error in updateProperty", { error, propertyId: id })
     return { success: false, error: "Failed to update property" }
   }
 }
 
-// Delete a property
+/**
+ * Delete a property with proper error handling and RLS bypass
+ */
 export async function deleteProperty(id: string) {
   try {
-    const supabase = createServerSupabaseClient()
+    const supabase = createAdminDatabaseClient()
 
     // Delete property (cascade will handle images)
     const { error } = await supabase.from("properties").delete().eq("id", id)
 
     if (error) {
-      console.error("Error deleting property:", error)
+      logError("Error deleting property", { error, propertyId: id })
       return { success: false, error: error.message }
     }
 
@@ -297,7 +312,7 @@ export async function deleteProperty(id: string) {
     // Redirect to admin page
     redirect("/admin")
   } catch (error) {
-    console.error("Error in deleteProperty:", error)
+    logError("Error in deleteProperty", { error, propertyId: id })
     return { success: false, error: "Failed to delete property" }
   }
 }

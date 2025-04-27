@@ -2,133 +2,73 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useAuth } from "@/lib/auth-provider"
 import { useBookings } from "@/hooks/use-bookings"
 import { useProperties } from "@/hooks/use-properties"
-import { Loader2, Plus, Pencil, Calendar, Home, Users, CheckCircle, Clock, LogIn, LogOut, Eye } from "lucide-react"
-import { format, startOfMonth, endOfMonth, startOfWeek, endOfWeek, isWithinInterval, parseISO } from "date-fns"
+import {
+  Loader2,
+  Plus,
+  Pencil,
+  Calendar,
+  Home,
+  Users,
+  Clock,
+  Eye,
+  AlertTriangle,
+  RefreshCw,
+  Bug,
+  DollarSign,
+  ArrowRight,
+} from "lucide-react"
+import { format } from "date-fns"
 
 export default function AdminDashboard() {
-  const { isAdmin } = useAuth()
+  const { isAdmin, isLoading: authLoading } = useAuth()
   const router = useRouter()
-  const { bookings, isLoading: isLoadingBookings } = useBookings()
-  const { properties, isLoading: isLoadingProperties } = useProperties()
+  const { bookings, isLoading: bookingsLoading, error: bookingsError, isMockData } = useBookings()
+  const { properties, isLoading: propertiesLoading, error: propertiesError } = useProperties()
+  const [isRefreshing, setIsRefreshing] = useState(false)
   const [isClient, setIsClient] = useState(false)
 
   useEffect(() => {
     setIsClient(true)
-    if (isAdmin === false) {
+    if (!authLoading && !isAdmin) {
       router.push("/admin/login")
     }
-  }, [isAdmin, router])
+  }, [isAdmin, authLoading, router])
 
-  if (!isClient || isAdmin === false) {
-    return null
+  const handleRefresh = () => {
+    setIsRefreshing(true)
+    window.location.reload()
   }
 
-  // Calculate occupancy metrics
-  const calculateOccupancy = (bookings, properties) => {
-    if (!bookings || !properties || bookings.length === 0 || properties.length === 0) {
-      return { rate: 0, bookedNights: 0, totalNights: 0 }
-    }
-
-    const now = new Date()
-    const firstDayOfMonth = startOfMonth(now)
-    const lastDayOfMonth = endOfMonth(now)
-    const daysInMonth = (lastDayOfMonth.getTime() - firstDayOfMonth.getTime()) / (1000 * 60 * 60 * 24) + 1
-
-    // Count confirmed bookings in the current month
-    const currentMonthBookings = bookings.filter((booking) => {
-      const checkIn = parseISO(booking.check_in)
-      const checkOut = parseISO(booking.check_out)
-
-      // Check if the booking overlaps with the current month
-      return booking.status === "confirmed" && checkIn <= lastDayOfMonth && checkOut >= firstDayOfMonth
-    })
-
-    // Calculate booked nights in the current month
-    const bookedNights = currentMonthBookings.reduce((total, booking) => {
-      const checkIn = parseISO(booking.check_in)
-      const checkOut = parseISO(booking.check_out)
-
-      // Adjust dates to be within the current month
-      const effectiveCheckIn = checkIn < firstDayOfMonth ? firstDayOfMonth : checkIn
-      const effectiveCheckOut = checkOut > lastDayOfMonth ? lastDayOfMonth : checkOut
-
-      // Calculate nights within the current month
-      const nights = Math.ceil((effectiveCheckOut.getTime() - effectiveCheckIn.getTime()) / (1000 * 60 * 60 * 24)) + 1
-      return total + nights
-    }, 0)
-
-    // Total available nights in the current month
-    const totalNights = properties.length * daysInMonth
-
-    // Calculate occupancy rate
-    const rate = totalNights > 0 ? Math.round((bookedNights / totalNights) * 100) : 0
-
-    return { rate, bookedNights, totalNights }
+  if (!isClient || authLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-gouna-blue" />
+        <span className="ml-2 text-xl font-medium">Loading...</span>
+      </div>
+    )
   }
 
-  const getConfirmedBookingsCount = (bookings) => {
-    if (!bookings) return 0
-    return bookings.filter((booking) => booking.status === "confirmed").length
+  if (!isAdmin) {
+    return null // Will redirect in useEffect
   }
 
-  const getPendingBookingsCount = (bookings) => {
-    if (!bookings) return 0
-    return bookings.filter(
-      (booking) =>
-        booking.status === "awaiting_payment" ||
-        booking.status === "awaiting_confirmation" ||
-        booking.status === "pending",
-    ).length
-  }
+  // Calculate dashboard metrics
+  const totalProperties = properties?.length || 0
+  const activeBookings = bookings?.filter((b) => b.status === "confirmed")?.length || 0
+  const pendingBookings =
+    bookings?.filter((b) => ["awaiting_payment", "awaiting_confirmation"].includes(b.status))?.length || 0
 
-  const getCheckInsThisWeek = (bookings) => {
-    if (!bookings) return 0
-    const now = new Date()
-    const weekStart = startOfWeek(now, { weekStartsOn: 1 }) // Week starts on Monday
-    const weekEnd = endOfWeek(now, { weekStartsOn: 1 })
-
-    return bookings.filter((booking) => {
-      const checkIn = parseISO(booking.check_in)
-      return isWithinInterval(checkIn, { start: weekStart, end: weekEnd })
-    }).length
-  }
-
-  const getCheckOutsThisWeek = (bookings) => {
-    if (!bookings) return 0
-    const now = new Date()
-    const weekStart = startOfWeek(now, { weekStartsOn: 1 }) // Week starts on Monday
-    const weekEnd = endOfWeek(now, { weekStartsOn: 1 })
-
-    return bookings.filter((booking) => {
-      const checkOut = parseISO(booking.check_out)
-      return isWithinInterval(checkOut, { start: weekStart, end: weekEnd })
-    }).length
-  }
-
-  const occupancy = calculateOccupancy(bookings, properties)
-
-  const handleEditProperty = (id: string) => {
-    router.push(`/admin/properties/edit/${id}`)
-  }
-
-  const handleDeleteProperty = (id: string) => {
-    router.push(`/admin/properties/delete/${id}`)
-  }
-
-  const handleViewCalendar = (id: string) => {
-    router.push(`/admin/properties/calendar/${id}`)
-  }
-
-  const handleViewBooking = (id: string) => {
-    router.push(`/admin/bookings/${id}`)
-  }
+  // Calculate revenue (from confirmed bookings)
+  const confirmedBookings = bookings?.filter((b) => b.status === "confirmed") || []
+  const totalRevenue = confirmedBookings.reduce((sum, booking) => sum + (booking.total_price || 0), 0)
 
   // Find property title by ID
   const getPropertyTitle = (propertyId) => {
@@ -138,106 +78,182 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="container py-8">
-      <h1 className="text-3xl font-bold mb-8">Admin Dashboard</h1>
+    <div className="container py-10">
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-3xl font-bold text-gouna-blue-dark">Admin Dashboard</h1>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xl">Properties</CardTitle>
-            <CardDescription>Total properties listed</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center">
-              <Home className="h-8 w-8 text-gouna-blue mr-4" />
-              <span className="text-3xl font-bold">{properties?.length || 0}</span>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={handleRefresh} disabled={isRefreshing} className="flex items-center gap-2">
+            {isRefreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Refresh
+          </Button>
+        </div>
+      </div>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xl">Confirmed Bookings</CardTitle>
-            <CardDescription>Total confirmed bookings</CardDescription>
-          </CardHeader>
-          <CardContent>
+      {/* Mock Data Notice */}
+      {isMockData && (
+        <Card className="mb-6 bg-blue-50 border-blue-200">
+          <CardContent className="p-4">
             <div className="flex items-center">
-              <CheckCircle className="h-8 w-8 text-green-600 mr-4" />
-              <span className="text-3xl font-bold">{getConfirmedBookingsCount(bookings)}</span>
+              <AlertTriangle className="h-5 w-5 text-blue-500 mr-2" />
+              <h3 className="font-medium text-blue-700">Using Mock Data</h3>
             </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xl">Pending Bookings</CardTitle>
-            <CardDescription>Awaiting payment or confirmation</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center">
-              <Clock className="h-8 w-8 text-amber-500 mr-4" />
-              <span className="text-3xl font-bold">{getPendingBookingsCount(bookings)}</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xl">Occupancy Rate</CardTitle>
-            <CardDescription>Current month</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center">
-              <Users className="h-8 w-8 text-gouna-blue mr-4" />
-              <span className="text-3xl font-bold">{occupancy.rate}%</span>
-            </div>
-            <p className="text-sm text-gray-500 mt-2">
-              {occupancy.bookedNights} of {occupancy.totalNights} available nights booked
+            <p className="mt-1 text-sm text-blue-600">
+              The system is currently using mock data because the database connection timed out. This is normal in
+              preview environments or when database credentials are not configured.
             </p>
           </CardContent>
         </Card>
+      )}
 
+      {/* Error Messages */}
+      {(bookingsError || propertiesError) && (
+        <Card className="mb-6 bg-red-50 border-red-200">
+          <CardContent className="p-4">
+            <div className="flex items-center">
+              <AlertTriangle className="h-5 w-5 text-red-500 mr-2" />
+              <h3 className="font-medium text-red-700">Data Loading Errors</h3>
+            </div>
+            {bookingsError && (
+              <p className="mt-1 text-sm text-red-600">
+                <strong>Bookings:</strong> {bookingsError}
+              </p>
+            )}
+            {propertiesError && (
+              <p className="mt-1 text-sm text-red-600">
+                <strong>Properties:</strong> {propertiesError}
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Quick Access Cards */}
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 mb-8">
+        <Link href="/admin/bookings" className="block">
+          <Card className="h-full transition-all hover:shadow-md">
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <Users className="mr-2 h-5 w-5" />
+                Bookings
+              </CardTitle>
+              <CardDescription>Manage all property bookings</CardDescription>
+            </CardHeader>
+            <CardFooter>
+              <Button variant="ghost" size="sm" className="ml-auto">
+                View All <ArrowRight className="ml-1 h-4 w-4" />
+              </Button>
+            </CardFooter>
+          </Card>
+        </Link>
+
+        <Link href="/admin/properties" className="block">
+          <Card className="h-full transition-all hover:shadow-md">
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <Home className="mr-2 h-5 w-5" />
+                Properties
+              </CardTitle>
+              <CardDescription>Manage all rental properties</CardDescription>
+            </CardHeader>
+            <CardFooter>
+              <Button variant="ghost" size="sm" className="ml-auto">
+                View All <ArrowRight className="ml-1 h-4 w-4" />
+              </Button>
+            </CardFooter>
+          </Card>
+        </Link>
+
+        <Link href="/admin/debug" className="block">
+          <Card className="h-full transition-all hover:shadow-md">
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <Bug className="mr-2 h-5 w-5" />
+                Debug Tools
+              </CardTitle>
+              <CardDescription>Access system diagnostics and tools</CardDescription>
+            </CardHeader>
+            <CardFooter>
+              <Button variant="ghost" size="sm" className="ml-auto">
+                Open Tools <ArrowRight className="ml-1 h-4 w-4" />
+              </Button>
+            </CardFooter>
+          </Card>
+        </Link>
+      </div>
+
+      {/* Dashboard Metrics */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xl">Check-ins This Week</CardTitle>
-            <CardDescription>Arriving guests</CardDescription>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Total Properties</CardTitle>
+            <Home className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="flex items-center">
-              <LogIn className="h-8 w-8 text-blue-600 mr-4" />
-              <span className="text-3xl font-bold">{getCheckInsThisWeek(bookings)}</span>
-            </div>
+            {propertiesLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <p className="text-2xl font-bold">{totalProperties}</p>
+            )}
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xl">Check-outs This Week</CardTitle>
-            <CardDescription>Departing guests</CardDescription>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Active Bookings</CardTitle>
+            <Calendar className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="flex items-center">
-              <LogOut className="h-8 w-8 text-purple-600 mr-4" />
-              <span className="text-3xl font-bold">{getCheckOutsThisWeek(bookings)}</span>
-            </div>
+            {bookingsLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <p className="text-2xl font-bold">{activeBookings}</p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Pending Bookings</CardTitle>
+            <Clock className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {bookingsLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <p className="text-2xl font-bold">{pendingBookings}</p>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+            <DollarSign className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            {bookingsLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <p className="text-2xl font-bold">${totalRevenue.toFixed(2)}</p>
+            )}
           </CardContent>
         </Card>
       </div>
 
-      <Tabs defaultValue="bookings" className="space-y-6">
+      <Tabs defaultValue="bookings" className="space-y-4">
         <TabsList>
           <TabsTrigger value="bookings">Recent Bookings</TabsTrigger>
           <TabsTrigger value="properties">Properties</TabsTrigger>
         </TabsList>
-
-        <TabsContent value="bookings">
+        <TabsContent value="bookings" className="space-y-4">
           <Card>
             <CardHeader>
               <CardTitle>Recent Bookings</CardTitle>
-              <CardDescription>Manage your property bookings</CardDescription>
+              <CardDescription>Overview of the most recent property bookings</CardDescription>
             </CardHeader>
             <CardContent>
-              {isLoadingBookings ? (
+              {bookingsLoading ? (
                 <div className="flex justify-center py-8">
                   <Loader2 className="h-8 w-8 animate-spin text-gouna-blue" />
                 </div>
@@ -263,23 +279,17 @@ export default function AdminDashboard() {
                         </TableCell>
                         <TableCell>
                           <span
-                            className={`inline-block px-2 py-1 rounded-full text-xs ${
-                              booking.status === "confirmed"
-                                ? "bg-green-100 text-green-800"
-                                : booking.status === "awaiting_confirmation"
-                                  ? "bg-blue-100 text-blue-800"
-                                  : booking.status === "awaiting_payment"
-                                    ? "bg-yellow-100 text-yellow-800"
-                                    : booking.status === "cancelled"
-                                      ? "bg-red-100 text-red-800"
-                                      : "bg-gray-100 text-gray-800"
-                            }`}
+                            className={`inline-block px-2 py-1 rounded-full text-xs ${getStatusColor(booking.status)}`}
                           >
                             {booking.status.replace("_", " ")}
                           </span>
                         </TableCell>
                         <TableCell className="text-right">
-                          <Button variant="outline" size="sm" onClick={() => handleViewBooking(booking.id)}>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => router.push(`/admin/bookings/${booking.id}`)}
+                          >
                             <Eye className="h-4 w-4 mr-1" /> View
                           </Button>
                         </TableCell>
@@ -292,34 +302,24 @@ export default function AdminDashboard() {
                   <p className="text-gray-500">No bookings found</p>
                 </div>
               )}
-
               {bookings && bookings.length > 5 && (
                 <div className="flex justify-center mt-4">
-                  <Button variant="outline" onClick={() => router.push("/admin/bookings")}>
-                    View All Bookings
+                  <Button asChild>
+                    <Link href="/admin/bookings">View All Bookings</Link>
                   </Button>
                 </div>
               )}
             </CardContent>
           </Card>
         </TabsContent>
-
-        <TabsContent value="properties">
+        <TabsContent value="properties" className="space-y-4">
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <div>
-                <CardTitle>Properties</CardTitle>
-                <CardDescription>Manage your rental properties</CardDescription>
-              </div>
-              <Button
-                onClick={() => router.push("/admin/properties/new")}
-                className="bg-gouna-blue hover:bg-gouna-blue-dark"
-              >
-                <Plus className="mr-2 h-4 w-4" /> Add Property
-              </Button>
+            <CardHeader>
+              <CardTitle>Properties Overview</CardTitle>
+              <CardDescription>Summary of all available rental properties</CardDescription>
             </CardHeader>
             <CardContent>
-              {isLoadingProperties ? (
+              {propertiesLoading ? (
                 <div className="flex justify-center py-8">
                   <Loader2 className="h-8 w-8 animate-spin text-gouna-blue" />
                 </div>
@@ -344,7 +344,7 @@ export default function AdminDashboard() {
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => handleViewCalendar(property.id)}
+                              onClick={() => router.push(`/admin/properties/calendar/${property.id}`)}
                               title="View Calendar"
                             >
                               <Calendar className="h-4 w-4 mr-1" /> Calendar
@@ -352,7 +352,7 @@ export default function AdminDashboard() {
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => handleEditProperty(property.id)}
+                              onClick={() => router.push(`/admin/properties/edit/${property.id}`)}
                               title="Edit Property"
                             >
                               <Pencil className="h-4 w-4 mr-1" /> Edit
@@ -374,11 +374,10 @@ export default function AdminDashboard() {
                   </Button>
                 </div>
               )}
-
               {properties && properties.length > 5 && (
                 <div className="flex justify-center mt-4">
-                  <Button variant="outline" onClick={() => router.push("/admin/properties")}>
-                    View All Properties
+                  <Button asChild>
+                    <Link href="/admin/properties">View All Properties</Link>
                   </Button>
                 </div>
               )}
@@ -388,4 +387,20 @@ export default function AdminDashboard() {
       </Tabs>
     </div>
   )
+}
+
+// Helper function to get status color
+function getStatusColor(status: string) {
+  switch (status) {
+    case "confirmed":
+      return "bg-green-100 text-green-800"
+    case "awaiting_payment":
+      return "bg-yellow-100 text-yellow-800"
+    case "awaiting_confirmation":
+      return "bg-blue-100 text-blue-800"
+    case "cancelled":
+      return "bg-red-100 text-red-800"
+    default:
+      return "bg-gray-100 text-gray-800"
+  }
 }

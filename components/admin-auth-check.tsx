@@ -15,6 +15,7 @@ interface AdminAuthCheckProps {
   children: React.ReactNode
 }
 
+// Named export for the component
 export function AdminAuthCheck({ children }: AdminAuthCheckProps) {
   const { isAuthenticated, isAdmin, isLoading, error, checkSession } = useAuth()
   const pathname = usePathname()
@@ -165,3 +166,6 @@ export function AdminAuthCheck({ children }: AdminAuthCheckProps) {
 
   return <>{children}</>
 }
+
+// Also export as default for compatibility
+export default AdminAuthCheck

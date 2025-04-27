@@ -14,3 +14,18 @@ export function getAuthRedirectUrl(path: string): string {
   // Return the full URL
   return `${baseUrl}${normalizedPath}`
 }
+
+/**
+ * Checks if a user has admin privileges
+ * @param user The user object to check
+ * @returns boolean indicating if the user is an admin
+ */
+export function isAdmin(user: any): boolean {
+  // Check if user exists and has the admin role
+  if (!user) return false
+
+  // Check for admin role in user object
+  // This implementation depends on your user data structure
+  // Adjust according to your actual user data structure
+  return user.role === "admin" || user.is_admin === true
+}

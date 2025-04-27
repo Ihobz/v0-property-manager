@@ -1,62 +1,73 @@
-import { type NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import { put } from "@vercel/blob"
-import { logUploadEvent, logError } from "@/lib/logging"
-import { addTenantIdDocument } from "@/app/api/bookings/actions"
+import { nanoid } from "nanoid"
+import { logError, logInfo } from "@/lib/logging"
+import { addTenantIdDocument, updatePaymentProof } from "@/app/api/bookings/actions"
 
-export async function POST(request: NextRequest) {
+export async function POST(request: Request) {
   try {
     const formData = await request.formData()
     const file = formData.get("file") as File
-    const filename = formData.get("filename") as string
+    const folder = (formData.get("folder") as string) || "uploads"
     const type = formData.get("type") as string
+    const bookingId = formData.get("bookingId") as string
 
     if (!file) {
-      return NextResponse.json({ error: "No file provided" }, { status: 400 })
+      logError("Upload failed", "No file provided in request")
+      return NextResponse.json({ success: false, error: "No file provided" }, { status: 400 })
     }
 
+    // Check for blob token
     if (!process.env.BLOB_READ_WRITE_TOKEN) {
-      logError("Missing BLOB_READ_WRITE_TOKEN environment variable", {})
-      return NextResponse.json({ error: "Storage configuration error" }, { status: 500 })
+      logError("Upload failed", "Missing BLOB_READ_WRITE_TOKEN environment variable")
+      return NextResponse.json({ success: false, error: "Storage configuration error: Missing token" }, { status: 500 })
     }
+
+    // Generate a unique filename
+    const uniqueId = nanoid()
+    const originalName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_")
+    const uniqueFilename = `${folder}/${uniqueId}-${originalName}`
 
     // Upload to Vercel Blob with explicit token
-    const blob = await put(filename, file, {
-      access: "public",
-      token: process.env.BLOB_READ_WRITE_TOKEN,
-    })
+    try {
+      const blob = await put(uniqueFilename, file, {
+        access: "public",
+        token: process.env.BLOB_READ_WRITE_TOKEN,
+      })
 
-    // Handle different types of uploads
-    if (type === "id") {
-      const bookingId = formData.get("bookingId") as string
-      if (!bookingId) {
-        return NextResponse.json({ error: "Booking ID is required for ID documents" }, { status: 400 })
+      logInfo("Upload successful", `File uploaded to ${blob.url}`)
+
+      // Handle different types of uploads
+      if (type === "payment" && bookingId) {
+        const result = await updatePaymentProof(bookingId, blob.url)
+        if (!result.success) {
+          logError("Failed to update payment proof", { bookingId, error: result.error })
+          // Continue anyway since the file was uploaded successfully
+        }
+      } else if (type === "id" && bookingId) {
+        const result = await addTenantIdDocument(bookingId, blob.url)
+        if (!result.success) {
+          logError("Failed to add tenant ID document", { bookingId, error: result.error })
+          // Continue anyway since the file was uploaded successfully
+        }
       }
 
-      // Add document URL to booking record
-      const result = await addTenantIdDocument(bookingId, blob.url)
-      if (!result.success) {
-        logError(`Failed to add tenant ID document to booking: ${result.error}`, { bookingId })
-        return NextResponse.json({ error: result.error }, { status: 500 })
-      }
-
-      logUploadEvent(`ID document uploaded and linked to booking ${bookingId}`, "info", { url: blob.url })
-    } else if (type === "property") {
-      const propertyId = formData.get("propertyId") as string
-      if (!propertyId) {
-        return NextResponse.json({ error: "Property ID is required for property images" }, { status: 400 })
-      }
-
-      logUploadEvent(`Property image uploaded for property ${propertyId}`, "info", { url: blob.url })
+      return NextResponse.json({
+        success: true,
+        url: blob.url,
+        filename: file.name,
+        size: file.size,
+        contentType: file.type,
+      })
+    } catch (blobError) {
+      const errorMessage = blobError instanceof Error ? blobError.message : "Unknown blob error"
+      logError("Blob upload error", errorMessage)
+      return NextResponse.json({ success: false, error: `Blob upload failed: ${errorMessage}` }, { status: 500 })
     }
-
-    return NextResponse.json({
-      url: blob.url,
-      success: true,
-    })
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error during upload"
-    logError(`Upload error: ${errorMessage}`, { error })
-    return NextResponse.json({ error: errorMessage }, { status: 500 })
+    const errorMessage = error instanceof Error ? error.message : "Unknown error"
+    logError("Upload error", errorMessage)
+    return NextResponse.json({ success: false, error: errorMessage }, { status: 500 })
   }
 }
 

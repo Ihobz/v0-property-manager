@@ -2,12 +2,13 @@
 
 import type React from "react"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useCallback } from "react"
 import { Button } from "@/components/ui/button"
 import { uploadFile } from "@/app/api/bookings/actions"
 import { Loader2, Upload, CheckCircle, XCircle, Trash2 } from "lucide-react"
 import { Progress } from "@/components/ui/progress"
 import { useRouter } from "next/navigation"
+import { logError } from "@/lib/logging"
 
 interface FileUploadProps {
   bookingId: string
@@ -99,31 +100,36 @@ export function FileUpload({
     return interval
   }
 
-  const uploadCurrentFile = async () => {
-    if (currentFileIndex >= files.length) {
-      return true // All files uploaded
-    }
+  const uploadCurrentFile = useCallback(
+    async (file: File) => {
+      const formData = new FormData()
+      formData.append("file", file)
+      formData.append("bookingId", bookingId)
+      formData.append("uploadType", uploadType)
 
-    const file = files[currentFileIndex]
-    const formData = new FormData()
-    formData.append("file", file)
-    formData.append("bookingId", bookingId)
-    formData.append("uploadType", uploadType)
+      const progressInterval = simulateProgress()
 
-    const progressInterval = simulateProgress()
-    const result = await uploadFile(formData)
-    clearInterval(progressInterval)
-    setUploadProgress(100)
+      try {
+        const result = await uploadFile(formData)
+        clearInterval(progressInterval)
+        setUploadProgress(100)
 
-    if (!result.success) {
-      setUploadError(result.error || `Failed to upload ${file.name}`)
-      return false
-    }
+        if (!result.success) {
+          setUploadError(result.error || `Failed to upload ${file.name}`)
+          return false
+        }
 
-    // Move to next file
-    setCurrentFileIndex(currentFileIndex + 1)
-    return true
-  }
+        return true
+      } catch (error) {
+        clearInterval(progressInterval)
+        setUploadProgress(0)
+        setUploadError(`Upload failed: ${error instanceof Error ? error.message : "Unknown error"}`)
+        logError("File upload error", { error, fileName: file.name, bookingId, uploadType })
+        return false
+      }
+    },
+    [bookingId, uploadType],
+  )
 
   const handleUpload = async () => {
     if (files.length === 0) {
@@ -134,23 +140,25 @@ export function FileUpload({
     try {
       setIsUploading(true)
       setUploadError(null)
-      setCurrentFileIndex(0)
 
       let allSuccessful = true
+      let successCount = 0
 
       // Upload files one by one
-      while (currentFileIndex < files.length) {
-        const success = await uploadCurrentFile()
+      for (let i = 0; i < files.length; i++) {
+        setCurrentFileIndex(i)
+        const success = await uploadCurrentFile(files[i])
+
         if (!success) {
           allSuccessful = false
           break
         }
 
-        // Need to update the index here for the loop condition
-        setCurrentFileIndex((prev) => prev + 1)
+        successCount++
       }
 
-      if (allSuccessful) {
+      // Check if all files were uploaded successfully
+      if (allSuccessful && successCount === files.length) {
         setUploadSuccess(true)
         setFiles([])
         if (fileInputRef.current) {
