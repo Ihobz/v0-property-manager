@@ -17,6 +17,7 @@ import { toast } from "@/components/ui/use-toast"
 import { cn } from "@/lib/utils"
 import { createBooking } from "@/app/api/bookings/actions"
 import { getPropertyBookedDates } from "@/app/api/availability/actions"
+import { logError } from "@/lib/logging"
 
 interface Property {
   id?: string
@@ -190,6 +191,7 @@ export default function BookingForm({
       }
     } catch (error) {
       console.error("Error creating booking:", error)
+      logError("Error creating booking in form", { error, propertyId })
       toast({
         variant: "destructive",
         title: "Error",
@@ -206,27 +208,18 @@ export default function BookingForm({
     return bookedDates.includes(formattedDate)
   }
 
-  // Function to get day style based on booking status
-  const getDayStyle = (date: Date) => {
-    const formattedDate = format(date, "yyyy-MM-dd")
-
-    if (blockedDates.includes(formattedDate)) {
-      return "bg-gray-200 text-gray-500 cursor-not-allowed"
+  // Handle check-in date selection
+  const handleCheckInSelect = (date: Date | undefined) => {
+    setCheckIn(date)
+    // If check-out is before check-in, reset it
+    if (date && checkOut && checkOut <= date) {
+      setCheckOut(undefined)
     }
+  }
 
-    if (confirmedDates.includes(formattedDate)) {
-      return "bg-green-100 text-green-800 cursor-not-allowed"
-    }
-
-    if (pendingDates.includes(formattedDate)) {
-      return "bg-blue-100 text-blue-800 cursor-not-allowed"
-    }
-
-    if (awaitingPaymentDates.includes(formattedDate)) {
-      return "bg-yellow-100 text-yellow-800 cursor-not-allowed"
-    }
-
-    return ""
+  // Handle check-out date selection
+  const handleCheckOutSelect = (date: Date | undefined) => {
+    setCheckOut(date)
   }
 
   // Safe toFixed function that handles undefined/null values
@@ -309,16 +302,9 @@ export default function BookingForm({
                     <Calendar
                       mode="single"
                       selected={checkIn}
-                      onSelect={setCheckIn}
+                      onSelect={handleCheckInSelect}
                       disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0)) || isDateDisabled(date)}
                       initialFocus
-                      styles={{
-                        day: (date) => {
-                          return {
-                            className: getDayStyle(date),
-                          }
-                        },
-                      }}
                     />
                   )}
                 </PopoverContent>
@@ -332,6 +318,7 @@ export default function BookingForm({
                     id="check-out"
                     variant="outline"
                     className={cn("w-full justify-start text-left font-normal", !checkOut && "text-muted-foreground")}
+                    disabled={!checkIn}
                   >
                     <CalendarIcon className="mr-2 h-4 w-4" />
                     {checkOut ? format(checkOut, "PPP") : <span>Select date</span>}
@@ -346,19 +333,9 @@ export default function BookingForm({
                     <Calendar
                       mode="single"
                       selected={checkOut}
-                      onSelect={setCheckOut}
-                      disabled={(date) =>
-                        (checkIn ? date <= checkIn : date < new Date(new Date().setHours(0, 0, 0, 0))) ||
-                        isDateDisabled(date)
-                      }
+                      onSelect={handleCheckOutSelect}
+                      disabled={(date) => !checkIn || date <= checkIn || isDateDisabled(date)}
                       initialFocus
-                      styles={{
-                        day: (date) => {
-                          return {
-                            className: getDayStyle(date),
-                          }
-                        },
-                      }}
                     />
                   )}
                 </PopoverContent>
@@ -412,8 +389,6 @@ export default function BookingForm({
               <li>You can check your booking status anytime using your email.</li>
             </ul>
           </div>
-
-          {/* Color key removed as requested */}
         </form>
       </CardContent>
       <CardFooter>

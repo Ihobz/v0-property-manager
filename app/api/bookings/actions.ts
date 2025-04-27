@@ -1,11 +1,10 @@
 "use server"
 
-import { createServerSupabaseClient } from "@/lib/supabase/server"
+import { createServerSupabaseClient, createAdminSupabaseClient } from "@/lib/supabase/server"
 import { revalidatePath } from "next/cache"
-import { sendBookingConfirmationEmail, sendBookingStatusUpdateEmail } from "@/lib/email-service"
+import { sendBookingConfirmationEmail } from "@/lib/email-service"
 import { normalizeBookingId } from "@/lib/booking-utils"
-import { logBookingEvent } from "@/lib/logging"
-import { createClient } from "@supabase/supabase-js"
+import { logBookingEvent, logError, logInfo } from "@/lib/logging"
 
 // Type for booking data
 type BookingData = {
@@ -25,38 +24,47 @@ type BookingData = {
   notes?: string // We'll keep this in the type but won't send it to the database
 }
 
-// Create a Supabase admin client with service role key
-function createAdminClient() {
-  const supabaseUrl = process.env.SUPABASE_URL
-  const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-  if (!supabaseUrl || !supabaseServiceKey) {
-    throw new Error("Missing Supabase environment variables for admin client")
-  }
-
-  return createClient(supabaseUrl, supabaseServiceKey)
-}
-
-// Create a new booking
-export async function createBooking(bookingData: BookingData) {
+// Create a new booking - handles both FormData and direct object inputs
+export async function createBooking(input: FormData | BookingData) {
   try {
-    await logBookingEvent("Creating new booking", "info", { bookingData })
+    await logBookingEvent("Creating new booking", "info", {
+      inputType: input instanceof FormData ? "FormData" : "Object",
+    })
 
     // Use admin client to bypass RLS policies
-    const supabase = createAdminClient()
+    const supabase = createAdminSupabaseClient()
 
-    // Normalize field names to handle both camelCase and snake_case
-    const normalizedData = {
-      property_id: bookingData.property_id || bookingData.propertyId,
-      name: bookingData.name,
-      email: bookingData.email,
-      phone: bookingData.phone,
-      check_in: bookingData.check_in || bookingData.checkIn,
-      check_out: bookingData.check_out || bookingData.checkOut,
-      guests: bookingData.guests || 2, // Default to 2 guests if not specified
-      base_price: bookingData.base_price || (bookingData.total_price || bookingData.totalPrice || 0) * 0.9, // Estimate base price if not provided
-      total_price: bookingData.total_price || bookingData.totalPrice,
-      // Remove notes field as it doesn't exist in the database
+    // Determine if input is FormData or BookingData
+    let normalizedData: any = {}
+
+    if (input instanceof FormData) {
+      // Handle FormData input
+      normalizedData = {
+        property_id: input.get("propertyId") || input.get("property_id"),
+        name: input.get("name"),
+        email: input.get("email"),
+        phone: input.get("phone"),
+        check_in: input.get("checkIn") || input.get("check_in"),
+        check_out: input.get("checkOut") || input.get("check_out"),
+        guests: Number(input.get("guests") || 2),
+        base_price: Number(input.get("basePrice") || input.get("base_price") || 0),
+        total_price: Number(input.get("totalPrice") || input.get("total_price") || 0),
+        notes: input.get("notes") || input.get("specialRequests"),
+      }
+    } else {
+      // Handle BookingData object input
+      normalizedData = {
+        property_id: input.property_id || input.propertyId,
+        name: input.name,
+        email: input.email,
+        phone: input.phone,
+        check_in: input.check_in || input.checkIn,
+        check_out: input.check_out || input.checkOut,
+        guests: input.guests || 2, // Default to 2 guests if not specified
+        base_price: input.base_price || (input.total_price || input.totalPrice || 0) * 0.9, // Estimate base price if not provided
+        total_price: input.total_price || input.totalPrice,
+        notes: input.notes,
+      }
     }
 
     // Validate the booking data
@@ -68,7 +76,7 @@ export async function createBooking(bookingData: BookingData) {
       !normalizedData.check_out
     ) {
       const errorMsg = "Missing required booking fields"
-      await logBookingEvent(errorMsg, "error", { bookingData, normalizedData })
+      await logBookingEvent(errorMsg, "error", { normalizedData })
       return { booking: null, error: errorMsg }
     }
 
@@ -89,7 +97,6 @@ export async function createBooking(bookingData: BookingData) {
         created_at: new Date().toISOString(),
       })
       .select()
-      .single()
 
     if (error) {
       await logBookingEvent("Error creating booking", "error", { error, bookingData: normalizedData })
@@ -97,19 +104,28 @@ export async function createBooking(bookingData: BookingData) {
       return { booking: null, error: error.message }
     }
 
-    await logBookingEvent("Booking created successfully", "info", { bookingId: data.id })
+    // Check if we got data back and it's an array with at least one element
+    if (!data || data.length === 0) {
+      const errorMsg = "Booking was created but no data was returned"
+      await logBookingEvent(errorMsg, "error", { bookingData: normalizedData })
+      return { booking: null, error: errorMsg }
+    }
+
+    // Use the first booking from the array
+    const booking = data[0]
+    await logBookingEvent("Booking created successfully", "info", { bookingId: booking.id })
 
     // Get property details for the email
     const { data: property, error: propertyError } = await supabase
       .from("properties")
       .select("name, location")
       .eq("id", normalizedData.property_id)
-      .single()
+      .maybeSingle()
 
     if (propertyError) {
       await logBookingEvent("Error fetching property details for email", "warning", {
         propertyError,
-        bookingId: data.id,
+        bookingId: booking.id,
       })
     }
 
@@ -119,18 +135,18 @@ export async function createBooking(bookingData: BookingData) {
         await sendBookingConfirmationEmail({
           email: normalizedData.email,
           name: normalizedData.name,
-          bookingId: data.id,
+          bookingId: booking.id,
           propertyTitle: property.name,
           checkIn: normalizedData.check_in,
           checkOut: normalizedData.check_out,
           totalPrice: normalizedData.total_price,
         })
         await logBookingEvent("Booking confirmation email sent", "info", {
-          bookingId: data.id,
+          bookingId: booking.id,
           email: normalizedData.email,
         })
       } catch (emailError) {
-        await logBookingEvent("Error sending confirmation email", "warning", { emailError, bookingId: data.id })
+        await logBookingEvent("Error sending confirmation email", "warning", { emailError, bookingId: booking.id })
         console.error("Error sending confirmation email:", emailError)
         // Continue even if email fails
       }
@@ -139,7 +155,7 @@ export async function createBooking(bookingData: BookingData) {
     // Revalidate paths
     revalidatePath(`/properties/${normalizedData.property_id}`)
 
-    return { booking: data, error: null }
+    return { booking, error: null }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : "Failed to create booking"
     await logBookingEvent("Unexpected error in createBooking", "error", { error })
@@ -279,96 +295,36 @@ export async function getBookings() {
   }
 }
 
-// Get booking by ID with improved error handling
-export async function getBookingById(id: string) {
+export async function getBookingById(bookingId: string) {
   try {
-    // Normalize the booking ID
-    const bookingId = normalizeBookingId(id)
-    console.log(`Server Action: Fetching booking with raw ID: "${id}", normalized ID: "${bookingId}"`)
-    await logBookingEvent(`Fetching booking by ID: ${id}`, "info", { rawId: id, normalizedId: bookingId })
+    // Use admin client to bypass RLS
+    const supabase = createAdminSupabaseClient()
 
-    if (!bookingId) {
-      console.error("Server Action: No valid booking ID provided")
-      await logBookingEvent("No valid booking ID provided", "error", { rawId: id })
-      return { booking: null, error: "No valid booking ID provided" }
+    const { data, error } = await supabase
+      .from("bookings")
+      .select(`
+        *,
+        property:property_id (
+          id,
+          name,
+          location,
+          price_per_night,
+          images
+        )
+      `)
+      .eq("id", bookingId)
+      .single()
+
+    if (error) {
+      logError(`Error fetching booking: ${error.message}`, { bookingId, error })
+      return { booking: null, error: error.message }
     }
 
-    try {
-      const supabase = createServerSupabaseClient()
-
-      // Set a timeout for the database query
-      const timeoutPromise = new Promise((_, reject) => {
-        setTimeout(() => reject(new Error("Database query timed out")), 5000)
-      })
-
-      // First, get the booking
-      const bookingPromise = supabase.from("bookings").select("*").eq("id", bookingId).single()
-
-      // Race the query against the timeout
-      const { data: booking, error: bookingError } = (await Promise.race([
-        bookingPromise,
-        timeoutPromise.then(() => ({ data: null, error: { message: "Query timed out" } })),
-      ])) as any
-
-      if (bookingError) {
-        console.error(`Server Action: Error fetching booking with ID "${bookingId}":`, bookingError)
-        await logBookingEvent(`Error fetching booking with ID: ${bookingId}`, "error", { error: bookingError })
-        return {
-          booking: null,
-          error: bookingError.message,
-          details: {
-            code: bookingError.code,
-            hint: bookingError.hint,
-            details: bookingError.details,
-          },
-        }
-      }
-
-      if (!booking) {
-        console.error(`Server Action: No booking found with ID "${bookingId}"`)
-        await logBookingEvent(`No booking found with ID: ${bookingId}`, "warning")
-        return { booking: null, error: "Booking not found" }
-      }
-
-      // Now get the property details
-      const { data: property, error: propertyError } = await supabase
-        .from("properties")
-        .select("id, name, location, price, images, bedrooms, bathrooms, guests")
-        .eq("id", booking.property_id)
-        .single()
-
-      if (propertyError) {
-        console.error(`Server Action: Error fetching property for booking "${bookingId}":`, propertyError)
-        await logBookingEvent(`Error fetching property for booking: ${bookingId}`, "warning", { error: propertyError })
-
-        // Return booking without property details
-        return {
-          booking: { ...booking, properties: null },
-          error: "Could not fetch property details",
-        }
-      }
-
-      // Combine booking with property
-      const bookingWithProperty = {
-        ...booking,
-        properties: property || null,
-      }
-
-      console.log(`Server Action: Successfully retrieved booking with ID "${bookingId}"`)
-      await logBookingEvent(`Successfully retrieved booking with ID: ${bookingId}`, "info")
-      return { booking: bookingWithProperty, error: null }
-    } catch (dbError) {
-      console.error("Database error in getBookingById:", dbError)
-      throw dbError
-    }
+    return { booking: data, error: null }
   } catch (error) {
-    console.error("Server Action: Unexpected error:", error)
-    await logBookingEvent("Unexpected error in getBookingById", "error", { error })
-    return {
-      booking: null,
-      error: "Failed to fetch booking",
-      details: error instanceof Error ? error.message : String(error),
-    }
+    const errorMessage = error instanceof Error ? error.message : "Unknown error fetching booking"
+    logError(`Exception fetching booking: ${errorMessage}`, { bookingId, error })
+    return { booking: null, error: errorMessage }
   }
 }
 
@@ -436,74 +392,31 @@ export async function getBookingsByEmail(email: string) {
   }
 }
 
-// Update booking status
-export async function updateBookingStatus(id: string, status: string) {
+export async function updateBookingStatus(bookingId: string, status: string) {
   try {
-    // Normalize the booking ID
-    const bookingId = normalizeBookingId(id)
-    await logBookingEvent(`Updating booking status: ${id} to ${status}`, "info", { bookingId, status })
+    // Use admin client to bypass RLS
+    const supabase = createAdminSupabaseClient()
 
-    if (!bookingId) {
-      await logBookingEvent("No valid booking ID provided for status update", "error", { rawId: id })
-      return { success: false, error: "No valid booking ID provided" }
-    }
-
-    const supabase = createServerSupabaseClient()
-
-    // Get the booking first to have the email and property info
-    const { booking, error: fetchError } = await getBookingById(bookingId)
-
-    if (fetchError || !booking) {
-      await logBookingEvent("Error fetching booking for status update", "error", { fetchError, bookingId })
-      console.error("Error fetching booking for status update:", fetchError)
-      return { success: false, error: fetchError || "Booking not found" }
-    }
-
-    // Update the booking status
     const { error } = await supabase
       .from("bookings")
-      .update({
-        status,
-        updated_at: new Date().toISOString(),
-      })
+      .update({ status, updated_at: new Date().toISOString() })
       .eq("id", bookingId)
 
     if (error) {
-      await logBookingEvent("Error updating booking status", "error", { error, bookingId, status })
-      console.error("Error updating booking status:", error)
+      logError(`Error updating booking status: ${error.message}`, { bookingId, status, error })
       return { success: false, error: error.message }
     }
 
-    await logBookingEvent(`Booking status updated successfully to ${status}`, "info", { bookingId })
-
-    // Send email notification
-    try {
-      await sendBookingStatusUpdateEmail({
-        email: booking.email,
-        name: booking.name,
-        bookingId: booking.id,
-        propertyTitle: booking.properties?.name || "Your booking",
-        checkIn: booking.check_in,
-        checkOut: booking.check_out,
-        status,
-      })
-      await logBookingEvent("Status update email sent", "info", { bookingId, email: booking.email, status })
-    } catch (emailError) {
-      await logBookingEvent("Error sending status update email", "warning", { emailError, bookingId })
-      console.error("Error sending status update email:", emailError)
-      // Continue even if email fails
-    }
-
-    // Revalidate paths
-    revalidatePath(`/admin/bookings`)
-    revalidatePath(`/admin/bookings/${bookingId}`)
+    // Revalidate relevant paths
     revalidatePath(`/booking-status/${bookingId}`)
+    revalidatePath(`/admin/bookings/${bookingId}`)
+    revalidatePath("/admin/bookings")
 
     return { success: true }
   } catch (error) {
-    await logBookingEvent("Unexpected error in updateBookingStatus", "error", { error })
-    console.error("Error in updateBookingStatus:", error)
-    return { success: false, error: "Failed to update booking status" }
+    const errorMessage = error instanceof Error ? error.message : "Unknown error updating booking status"
+    logError(`Exception updating booking status: ${errorMessage}`, { bookingId, status, error })
+    return { success: false, error: errorMessage }
   }
 }
 
@@ -527,7 +440,7 @@ export async function updateBookingCleaningFee(bookingId: string, cleaningFee: n
       .from("bookings")
       .select("base_price")
       .eq("id", bookingId)
-      .single()
+      .maybeSingle()
 
     if (fetchError) {
       await logBookingEvent("Error fetching booking for cleaning fee update", "error", { fetchError, bookingId })
@@ -536,7 +449,7 @@ export async function updateBookingCleaningFee(bookingId: string, cleaningFee: n
     }
 
     // Calculate new total price
-    const basePrice = booking.base_price || 0
+    const basePrice = booking?.base_price || 0
     const totalPrice = basePrice + cleaningFee
 
     // Update the booking with new cleaning fee and total price
@@ -633,7 +546,7 @@ export async function addTenantIdDocument(id: string, documentUrl: string) {
       .from("bookings")
       .select("tenant_id")
       .eq("id", bookingId)
-      .single()
+      .maybeSingle()
 
     if (fetchError) {
       await logBookingEvent("Error fetching booking for tenant ID document", "error", { fetchError, bookingId })
@@ -644,7 +557,7 @@ export async function addTenantIdDocument(id: string, documentUrl: string) {
     // Create or update the tenant_id array
     let tenantIds: string[] = []
 
-    if (booking.tenant_id) {
+    if (booking?.tenant_id) {
       // If tenant_id exists and is an array, add the new document URL
       if (Array.isArray(booking.tenant_id)) {
         tenantIds = [...booking.tenant_id, documentUrl]
@@ -681,129 +594,79 @@ export async function addTenantIdDocument(id: string, documentUrl: string) {
   }
 }
 
-/**
- * Verifies if a booking ID exists in the database
- */
 export async function verifyBookingId(bookingId: string) {
-  console.log(`Verifying booking ID: "${bookingId}"`)
-  await logBookingEvent(`Verifying booking ID: ${bookingId}`, "info")
-
   try {
-    if (!bookingId) {
-      await logBookingEvent("No booking ID provided for verification", "error")
-      return { exists: false, error: "No booking ID provided" }
-    }
+    // Use admin client to bypass RLS
+    const supabase = createAdminSupabaseClient()
 
-    const supabase = createServerSupabaseClient()
+    // Log the verification attempt
+    logInfo(`Verifying booking ID: ${bookingId}`)
 
-    // Check if the booking exists
-    const { data, error } = await supabase.from("bookings").select("id, status").eq("id", bookingId).maybeSingle()
+    const { data, error } = await supabase.from("bookings").select("id, status").eq("id", bookingId).single()
 
     if (error) {
-      await logBookingEvent("Error verifying booking ID", "error", { error, bookingId })
-      console.error("Error verifying booking ID:", error)
-      return {
-        exists: false,
-        error: error.message,
-        details: {
-          code: error.code,
-          hint: error.hint,
-          details: error.details,
-        },
-      }
+      logError(`Error verifying booking ID: ${error.message}`, { bookingId, error })
+      return { exists: false, error: error.message }
     }
 
-    await logBookingEvent(`Booking verification result: ${!!data}`, "info", { bookingId, exists: !!data })
-
-    return {
-      exists: !!data,
-      bookingId: data?.id || null,
-      status: data?.status || null,
+    if (!data) {
+      logInfo(`Booking ID not found: ${bookingId}`)
+      return { exists: false, error: "Booking not found" }
     }
+
+    logInfo(`Booking ID verified: ${bookingId}, status: ${data.status}`)
+    return { exists: true, status: data.status }
   } catch (error) {
-    await logBookingEvent("Unexpected error verifying booking ID", "error", { error, bookingId })
-    console.error("Unexpected error verifying booking ID:", error)
-    return {
-      exists: false,
-      error: error instanceof Error ? error.message : "An unexpected error occurred",
-    }
+    const errorMessage = error instanceof Error ? error.message : "Unknown error verifying booking ID"
+    logError(`Exception verifying booking ID: ${errorMessage}`, { bookingId, error })
+    return { exists: false, error: errorMessage }
   }
 }
 
-/**
- * Creates a test booking for debugging purposes
- */
 export async function createTestBooking() {
   try {
-    console.log("Creating test booking...")
-    await logBookingEvent("Creating test booking", "info")
+    // Use admin client to bypass RLS
+    const supabase = createAdminSupabaseClient()
 
-    const supabase = createServerSupabaseClient()
+    // Get the first property from the database
+    const { data: properties, error: propertiesError } = await supabase.from("properties").select("id").limit(1)
 
-    // First, get a property to associate with the booking
-    const { data: properties, error: propertyError } = await supabase
-      .from("properties")
-      .select("id, name, price")
-      .limit(1)
-
-    if (propertyError || !properties || properties.length === 0) {
-      console.error("Error fetching property for test booking:", propertyError)
-      return {
-        success: false,
-        error: propertyError ? propertyError.message : "No properties found",
-      }
+    if (propertiesError || !properties || properties.length === 0) {
+      return { success: false, error: "No properties found" }
     }
 
-    const property = properties[0]
-    console.log("Found property for test booking:", {
-      id: property.id,
-      name: property.name,
-      price: property.price,
-    })
+    const propertyId = properties[0].id
 
     // Create a test booking
-    const testBooking = {
-      property_id: property.id,
-      name: "Test User",
-      email: "test@example.com",
-      phone: "+1234567890",
-      check_in: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0], // 7 days from now
-      check_out: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split("T")[0], // 14 days from now
-      guests: 2,
-      base_price: property.price * 7, // 7 days
-      total_price: property.price * 7,
-      status: "awaiting_payment",
-      created_at: new Date().toISOString(),
+    const { data: booking, error: bookingError } = await supabase
+      .from("bookings")
+      .insert({
+        property_id: propertyId,
+        check_in: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0], // 7 days from now
+        check_out: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString().split("T")[0], // 14 days from now
+        guests: 2,
+        first_name: "Test",
+        last_name: "User",
+        email: "test@example.com",
+        phone: "+1234567890",
+        special_requests: "This is a test booking",
+        status: "pending",
+      })
+      .select()
+      .single()
+
+    if (bookingError) {
+      return { success: false, error: bookingError.message }
     }
-
-    console.log("Inserting test booking:", testBooking)
-
-    const { data, error } = await supabase.from("bookings").insert(testBooking).select().single()
-
-    if (error) {
-      console.error("Error creating test booking:", error)
-      await logBookingEvent("Error creating test booking", "error", { error })
-      return { success: false, error: error.message }
-    }
-
-    console.log("Test booking created successfully:", data)
-    await logBookingEvent("Test booking created successfully", "info", { bookingId: data.id })
-
-    // Revalidate paths
-    revalidatePath("/admin/bookings")
 
     return {
       success: true,
-      booking: data,
-      message: `Test booking created successfully for property "${property.name}"`,
+      bookingId: booking.id,
+      message: "Test booking created successfully",
     }
   } catch (error) {
-    console.error("Unexpected error creating test booking:", error)
-    await logBookingEvent("Unexpected error creating test booking", "error", { error })
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "An unexpected error occurred",
-    }
+    const errorMessage = error instanceof Error ? error.message : "Unknown error creating test booking"
+    return { success: false, error: errorMessage }
   }
 }
 

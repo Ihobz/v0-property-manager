@@ -1,267 +1,265 @@
 import { getBookingById } from "@/app/api/bookings/actions"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { Calendar, Clock, MapPin, Users, Home, Phone, Mail, AlertCircle, CheckCircle } from "lucide-react"
+import { formatBookingIdForDisplay } from "@/lib/booking-utils"
+import { FileUpload } from "@/components/file-upload"
 import Link from "next/link"
-import Image from "next/image"
-import { notFound } from "next/navigation"
-import { decodeBookingId, formatBookingIdForDisplay } from "@/lib/booking-utils"
+import { logError } from "@/lib/logging"
 
 export default async function BookingStatusPage({ params }: { params: { id: string } }) {
-  // Decode the booking ID from the URL
-  const encodedId = params.id
-  const bookingId = decodeBookingId(encodedId)
+  const bookingId = params.id
 
-  if (!bookingId) {
-    return notFound()
-  }
+  try {
+    const { booking, error } = await getBookingById(bookingId)
 
-  const { booking, error } = await getBookingById(bookingId)
-
-  if (error || !booking) {
-    return notFound()
-  }
-
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString)
-    return date.toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    })
-  }
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "confirmed":
-        return <Badge className="bg-green-500">Confirmed</Badge>
-      case "awaiting_confirmation":
-        return <Badge className="bg-amber-500">Awaiting Confirmation</Badge>
-      case "cancelled":
-        return <Badge className="bg-red-500">Cancelled</Badge>
-      case "completed":
-        return <Badge className="bg-blue-500">Completed</Badge>
-      default:
-        return <Badge className="bg-gray-500">{status}</Badge>
-    }
-  }
-
-  const getStatusMessage = (status: string) => {
-    switch (status) {
-      case "confirmed":
-        return (
-          <Alert className="bg-green-50 border-green-200 mt-4">
-            <CheckCircle className="h-4 w-4 text-green-500" />
-            <AlertTitle className="text-green-800">Your booking is confirmed!</AlertTitle>
-            <AlertDescription className="text-green-700">
-              We look forward to welcoming you. You'll receive check-in instructions closer to your arrival date.
-            </AlertDescription>
-          </Alert>
-        )
-      case "awaiting_confirmation":
-        return booking.payment_proof ? (
-          <Alert className="bg-amber-50 border-amber-200 mt-4">
-            <Clock className="h-4 w-4 text-amber-500" />
-            <AlertTitle className="text-amber-800">Payment received, awaiting confirmation</AlertTitle>
-            <AlertDescription className="text-amber-700">
-              We've received your payment proof and are reviewing it. You'll receive a confirmation email soon.
-            </AlertDescription>
-          </Alert>
-        ) : (
-          <Alert className="bg-amber-50 border-amber-200 mt-4">
-            <Clock className="h-4 w-4 text-amber-500" />
-            <AlertTitle className="text-amber-800">Awaiting payment</AlertTitle>
-            <AlertDescription className="text-amber-700">
-              Please upload your payment proof to confirm your booking.
-              <div className="mt-2">
-                <Link href={`/upload/${booking.id}`}>
-                  <Button size="sm" className="bg-amber-500 hover:bg-amber-600">
-                    Upload Payment
-                  </Button>
-                </Link>
-              </div>
-            </AlertDescription>
-          </Alert>
-        )
-      case "cancelled":
-        return (
-          <Alert variant="destructive" className="mt-4">
-            <AlertCircle className="h-4 w-4" />
-            <AlertTitle>Booking cancelled</AlertTitle>
-            <AlertDescription>
-              This booking has been cancelled. If you have any questions, please contact us.
-            </AlertDescription>
-          </Alert>
-        )
-      default:
-        return null
-    }
-  }
-
-  return (
-    <div className="container mx-auto py-12 px-4">
-      <h1 className="text-3xl font-bold mb-8 text-center text-gouna-blue-dark">Booking Details</h1>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2">
-          <Card>
-            <CardHeader className="bg-gouna-blue text-white rounded-t-lg">
-              <div className="flex justify-between items-center">
-                <div>
-                  <CardTitle>Booking #{formatBookingIdForDisplay(booking.id)}</CardTitle>
-                  <CardDescription className="text-gray-200">
-                    Booked on {formatDate(booking.created_at)}
-                  </CardDescription>
-                </div>
-                {getStatusBadge(booking.status)}
-              </div>
+    if (error || !booking) {
+      // Instead of returning notFound(), show an error message
+      return (
+        <div className="container mx-auto py-12 px-4">
+          <Card className="max-w-md mx-auto">
+            <CardHeader>
+              <CardTitle>Booking Not Found</CardTitle>
+              <CardDescription>
+                We couldn't find a booking with the ID: {formatBookingIdForDisplay(bookingId)}
+              </CardDescription>
             </CardHeader>
-            <CardContent className="pt-6">
-              {getStatusMessage(booking.status)}
+            <CardContent>
+              <p className="text-red-600">
+                {error ||
+                  "The booking ID you provided does not exist in our system. Please check the booking ID or contact support."}
+              </p>
+            </CardContent>
+            <CardFooter>
+              <Link href="/" className="w-full">
+                <Button className="w-full">Return to Home</Button>
+              </Link>
+            </CardFooter>
+          </Card>
+        </div>
+      )
+    }
 
-              <div className="mt-6 space-y-6">
+    const { property } = booking
+
+    return (
+      <div className="container mx-auto py-12 px-4">
+        <div className="max-w-3xl mx-auto">
+          <h1 className="text-3xl font-bold mb-8 text-center text-gouna-blue-dark">Booking Status</h1>
+
+          <Card className="mb-8">
+            <CardHeader>
+              <CardTitle>Booking #{formatBookingIdForDisplay(bookingId)}</CardTitle>
+              <CardDescription>
+                {property?.name} - {property?.location}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <h3 className="text-lg font-medium mb-2">Stay Details</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="flex items-center">
-                      <Calendar className="h-5 w-5 mr-2 text-gouna-blue" />
-                      <div>
-                        <p className="text-sm text-gray-500">Check-in</p>
-                        <p className="font-medium">{formatDate(booking.check_in)}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center">
-                      <Calendar className="h-5 w-5 mr-2 text-gouna-blue" />
-                      <div>
-                        <p className="text-sm text-gray-500">Check-out</p>
-                        <p className="font-medium">{formatDate(booking.check_out)}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center">
-                      <Users className="h-5 w-5 mr-2 text-gouna-blue" />
-                      <div>
-                        <p className="text-sm text-gray-500">Guests</p>
-                        <p className="font-medium">
-                          {booking.guests} {booking.guests === 1 ? "guest" : "guests"}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center">
-                      <Home className="h-5 w-5 mr-2 text-gouna-blue" />
-                      <div>
-                        <p className="text-sm text-gray-500">Property</p>
-                        <p className="font-medium">{booking.properties?.title || "Property"}</p>
-                      </div>
-                    </div>
-                  </div>
+                  <h3 className="text-sm font-medium text-gray-500">Check-in</h3>
+                  <p>{new Date(booking.check_in).toLocaleDateString()}</p>
                 </div>
-
                 <div>
-                  <h3 className="text-lg font-medium mb-2">Guest Information</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="flex items-center">
-                      <Mail className="h-5 w-5 mr-2 text-gouna-blue" />
-                      <div>
-                        <p className="text-sm text-gray-500">Email</p>
-                        <p className="font-medium">{booking.email}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center">
-                      <Phone className="h-5 w-5 mr-2 text-gouna-blue" />
-                      <div>
-                        <p className="text-sm text-gray-500">Phone</p>
-                        <p className="font-medium">{booking.phone}</p>
-                      </div>
-                    </div>
-                  </div>
+                  <h3 className="text-sm font-medium text-gray-500">Check-out</h3>
+                  <p>{new Date(booking.check_out).toLocaleDateString()}</p>
                 </div>
-
                 <div>
-                  <h3 className="text-lg font-medium mb-2">Payment Details</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <h3 className="text-sm font-medium text-gray-500">Guests</h3>
+                  <p>{booking.guests}</p>
+                </div>
+                <div>
+                  <h3 className="text-sm font-medium text-gray-500">Status</h3>
+                  <p className={`font-medium ${getStatusColor(booking.status)}`}>
+                    {booking.status.charAt(0).toUpperCase() + booking.status.slice(1)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-gray-200">
+                <h3 className="text-sm font-medium text-gray-500 mb-2">Booking Details</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm text-gray-500">Name</p>
+                    <p>
+                      {booking.first_name} {booking.last_name}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-500">Email</p>
+                    <p>{booking.email}</p>
+                  </div>
+                  {booking.phone && (
                     <div>
-                      <p className="text-sm text-gray-500">Base Price</p>
-                      <p className="font-medium">${booking.base_price.toFixed(2)}</p>
+                      <p className="text-sm text-gray-500">Phone</p>
+                      <p>{booking.phone}</p>
                     </div>
-                    {booking.cleaning_fee && (
-                      <div>
-                        <p className="text-sm text-gray-500">Cleaning Fee</p>
-                        <p className="font-medium">${booking.cleaning_fee.toFixed(2)}</p>
-                      </div>
-                    )}
-                    <div className="md:col-span-2">
-                      <p className="text-sm text-gray-500">Total Price</p>
-                      <p className="font-medium text-lg">${booking.total_price.toFixed(2)}</p>
-                    </div>
-                  </div>
+                  )}
                 </div>
+              </div>
+
+              {booking.special_requests && (
+                <div className="pt-4 border-t border-gray-200">
+                  <h3 className="text-sm font-medium text-gray-500 mb-2">Special Requests</h3>
+                  <p className="text-sm">{booking.special_requests}</p>
+                </div>
+              )}
+
+              <div className="pt-4 border-t border-gray-200">
+                <h3 className="text-sm font-medium text-gray-500 mb-2">Payment Status</h3>
+                <StatusCard status={booking.status} bookingId={bookingId} />
               </div>
             </CardContent>
-            <CardFooter className="bg-gray-50 rounded-b-lg flex justify-between">
-              <p className="text-sm text-gray-500">Need help? Contact us at support@elgounarentals.com</p>
-              <Link href="/">
-                <Button variant="outline" size="sm">
+            <CardFooter>
+              <Link href="/" className="w-full">
+                <Button variant="outline" className="w-full">
                   Back to Home
                 </Button>
               </Link>
             </CardFooter>
           </Card>
-        </div>
 
-        <div>
-          <Card>
-            <CardHeader>
-              <CardTitle>Property Details</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {booking.properties?.images && booking.properties.images[0] && (
-                <div className="relative h-48 mb-4 rounded-md overflow-hidden">
-                  <Image
-                    src={booking.properties.images[0] || "/placeholder.svg"}
-                    alt={booking.properties.title}
-                    fill
-                    className="object-cover"
-                  />
-                </div>
-              )}
-
-              <h3 className="font-medium text-lg mb-2">{booking.properties?.title || "Property"}</h3>
-
-              {booking.properties?.location && (
-                <div className="flex items-center text-sm text-gray-500 mb-4">
-                  <MapPin className="h-4 w-4 mr-1" />
-                  <span>{booking.properties.location}</span>
-                </div>
-              )}
-
-              <div className="grid grid-cols-3 gap-2 text-center">
-                <div className="border rounded-md p-2">
-                  <p className="text-xs text-gray-500">Bedrooms</p>
-                  <p className="font-medium">{booking.properties?.bedrooms || "-"}</p>
-                </div>
-                <div className="border rounded-md p-2">
-                  <p className="text-xs text-gray-500">Bathrooms</p>
-                  <p className="font-medium">{booking.properties?.bathrooms || "-"}</p>
-                </div>
-                <div className="border rounded-md p-2">
-                  <p className="text-xs text-gray-500">Max Guests</p>
-                  <p className="font-medium">{booking.properties?.guests || "-"}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {booking.status === "awaiting_confirmation" && !booking.payment_proof && (
-            <div className="mt-4">
-              <Link href={`/upload/${booking.id}`} className="w-full">
-                <Button className="w-full bg-gouna-sand hover:bg-gouna-sand-dark">Upload Payment Proof</Button>
-              </Link>
-            </div>
+          {booking.status === "pending" && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Upload Payment Proof</CardTitle>
+                <CardDescription>
+                  Please upload a screenshot or photo of your payment confirmation to verify your booking.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <FileUpload
+                  bookingId={bookingId}
+                  uploadType="payment"
+                  maxSizeMB={5}
+                  allowedTypes={["image/jpeg", "image/png", "image/jpg", "application/pdf"]}
+                />
+              </CardContent>
+            </Card>
           )}
         </div>
       </div>
-    </div>
-  )
+    )
+  } catch (error) {
+    // Handle any unexpected errors
+    const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred"
+    logError(`Unexpected error in booking status page: ${errorMessage}`, { bookingId, error })
+
+    return (
+      <div className="container mx-auto py-12 px-4">
+        <Card className="max-w-md mx-auto">
+          <CardHeader>
+            <CardTitle>Error</CardTitle>
+            <CardDescription>An unexpected error occurred while processing your request.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-red-600">
+              We're sorry, but something went wrong. Please try again later or contact support.
+            </p>
+          </CardContent>
+          <CardFooter>
+            <Link href="/" className="w-full">
+              <Button className="w-full">Return to Home</Button>
+            </Link>
+          </CardFooter>
+        </Card>
+      </div>
+    )
+  }
 }
+
+function getStatusColor(status: string) {
+  switch (status) {
+    case "confirmed":
+      return "text-green-600"
+    case "pending":
+      return "text-amber-600"
+    case "cancelled":
+      return "text-red-600"
+    default:
+      return "text-gray-600"
+  }
+}
+
+function StatusCard({ status, bookingId }: { status: string; bookingId: string }) {
+  switch (status) {
+    case "confirmed":
+      return (
+        <div className="bg-green-50 border border-green-200 rounded-md p-4">
+          <div className="flex items-start">
+            <div className="flex-shrink-0">
+              <CheckCircle className="h-5 w-5 text-green-600" />
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-green-800">Payment Confirmed</h3>
+              <div className="mt-2 text-sm text-green-700">
+                <p>
+                  Your payment has been verified and your booking is confirmed. Thank you for choosing El Gouna Rentals!
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )
+    case "pending":
+      return (
+        <div className="bg-amber-50 border border-amber-200 rounded-md p-4">
+          <div className="flex items-start">
+            <div className="flex-shrink-0">
+              <Clock className="h-5 w-5 text-amber-600" />
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-amber-800">Payment Pending</h3>
+              <div className="mt-2 text-sm text-amber-700">
+                <p>
+                  We're waiting for your payment confirmation. Please upload your payment proof if you haven't already.
+                </p>
+                <div className="mt-2">
+                  <Link href={`/upload/${bookingId}`}>
+                    <Button size="sm" variant="outline" className="text-amber-600 border-amber-600 hover:bg-amber-50">
+                      Upload Payment Proof
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )
+    case "cancelled":
+      return (
+        <div className="bg-red-50 border border-red-200 rounded-md p-4">
+          <div className="flex items-start">
+            <div className="flex-shrink-0">
+              <XCircle className="h-5 w-5 text-red-600" />
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-red-800">Booking Cancelled</h3>
+              <div className="mt-2 text-sm text-red-700">
+                <p>
+                  This booking has been cancelled. If you believe this is an error, please contact our support team.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )
+    default:
+      return (
+        <div className="bg-gray-50 border border-gray-200 rounded-md p-4">
+          <div className="flex items-start">
+            <div className="flex-shrink-0">
+              <HelpCircle className="h-5 w-5 text-gray-600" />
+            </div>
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-gray-800">Status: {status}</h3>
+              <div className="mt-2 text-sm text-gray-700">
+                <p>Please contact our support team for more information about your booking status.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )
+  }
+}
+
+import { CheckCircle, Clock, XCircle, HelpCircle } from "lucide-react"

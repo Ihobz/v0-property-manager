@@ -1,4 +1,5 @@
 import config from "@/lib/config"
+import { logInfo, logError } from "@/lib/logging"
 
 type EmailData = {
   to: string
@@ -6,29 +7,48 @@ type EmailData = {
   html: string
 }
 
+type BookingEmailData = {
+  email: string
+  name: string
+  bookingId: string
+  propertyTitle: string
+  checkIn: string
+  checkOut: string
+  totalPrice: number
+  status?: string
+}
+
 export async function sendEmail({ to, subject, html }: EmailData) {
   try {
     // This is a placeholder for actual email sending logic
     // In a production environment, you would use a service like SendGrid, Mailgun, etc.
-    console.log(`Sending email to ${to} with subject: ${subject}`)
+    logInfo("Email service", `Sending email to ${to} with subject: ${subject}`)
 
     // For now, we'll just log the email content and return success
     // In a real implementation, you would make an API call to your email service
-    console.log("Email content:", html)
+    logInfo("Email service", "Email content:", { html: html.substring(0, 100) + "..." })
 
     return { success: true }
   } catch (error) {
-    console.error("Error sending email:", error)
+    logError("Email service", "Error sending email:", { error })
     return { success: false, error: error instanceof Error ? error.message : "Unknown error" }
   }
 }
 
-export function generateBookingConfirmationEmail(booking: any, property: any) {
+export function generateBookingConfirmationEmail({
+  email,
+  name,
+  bookingId,
+  propertyTitle,
+  checkIn,
+  checkOut,
+  totalPrice,
+}: BookingEmailData) {
   const siteUrl = config.public.SITE_URL || "http://localhost:3000"
-  const uploadUrl = `${siteUrl}/upload/${booking.id}`
+  const uploadUrl = `${siteUrl}/upload/${bookingId}`
 
   return {
-    to: booking.email,
+    to: email,
     subject: "Your El Gouna Rentals Booking Confirmation",
     html: `
       <!DOCTYPE html>
@@ -51,15 +71,14 @@ export function generateBookingConfirmationEmail(booking: any, property: any) {
             <h1>Booking Confirmation</h1>
           </div>
           <div class="content">
-            <p>Dear ${booking.name},</p>
+            <p>Dear ${name},</p>
             <p>Thank you for booking with El Gouna Rentals. Your booking request has been received and is awaiting payment confirmation.</p>
             
             <div class="details">
-              <p class="property-name">${property.title}</p>
-              <p><strong>Check-in:</strong> ${new Date(booking.check_in).toLocaleDateString()}</p>
-              <p><strong>Check-out:</strong> ${new Date(booking.check_out).toLocaleDateString()}</p>
-              <p><strong>Guests:</strong> ${booking.guests}</p>
-              <p><strong>Total Price:</strong> $${booking.total_price}</p>
+              <p class="property-name">${propertyTitle}</p>
+              <p><strong>Check-in:</strong> ${new Date(checkIn).toLocaleDateString()}</p>
+              <p><strong>Check-out:</strong> ${new Date(checkOut).toLocaleDateString()}</p>
+              <p><strong>Total Price:</strong> $${totalPrice}</p>
             </div>
             
             <h2>Payment Instructions</h2>
@@ -90,19 +109,27 @@ export function generateBookingConfirmationEmail(booking: any, property: any) {
   }
 }
 
-export async function sendBookingConfirmationEmail(booking: any, property: any) {
-  const emailData = generateBookingConfirmationEmail(booking, property)
+export async function sendBookingConfirmationEmail(bookingData: BookingEmailData) {
+  const emailData = generateBookingConfirmationEmail(bookingData)
   return sendEmail(emailData)
 }
 
-export function generateBookingStatusUpdateEmail(booking: any, property: any, newStatus: string) {
+export function generateBookingStatusUpdateEmail({
+  email,
+  name,
+  bookingId,
+  propertyTitle,
+  checkIn,
+  checkOut,
+  status,
+}: BookingEmailData) {
   const siteUrl = config.public.SITE_URL || "http://localhost:3000"
-  const statusCheckUrl = `${siteUrl}/booking-status/${booking.id}`
+  const statusCheckUrl = `${siteUrl}/booking-status/${bookingId}`
 
   let statusMessage = ""
   let subject = ""
 
-  switch (newStatus) {
+  switch (status) {
     case "confirmed":
       subject = "Your El Gouna Rental Booking is Confirmed"
       statusMessage =
@@ -120,11 +147,11 @@ export function generateBookingStatusUpdateEmail(booking: any, property: any, ne
       break
     default:
       subject = "Update on Your El Gouna Rental Booking"
-      statusMessage = `Your booking status has been updated to: ${newStatus.replace("_", " ").toUpperCase()}`
+      statusMessage = `Your booking status has been updated to: ${status?.replace("_", " ").toUpperCase() || "UPDATED"}`
   }
 
   return {
-    to: booking.email,
+    to: email,
     subject,
     html: `
       <!DOCTYPE html>
@@ -148,16 +175,15 @@ export function generateBookingStatusUpdateEmail(booking: any, property: any, ne
             <h1>Booking Status Update</h1>
           </div>
           <div class="content">
-            <p>Dear ${booking.name},</p>
+            <p>Dear ${name},</p>
             
             <p>${statusMessage}</p>
             
             <div class="details">
-              <p class="property-name">${property.title}</p>
-              <p><strong>Check-in:</strong> ${new Date(booking.check_in).toLocaleDateString()}</p>
-              <p><strong>Check-out:</strong> ${new Date(booking.check_out).toLocaleDateString()}</p>
-              <p><strong>Guests:</strong> ${booking.guests}</p>
-              <p><strong>Current Status:</strong> <span class="status">${newStatus.replace("_", " ").toUpperCase()}</span></p>
+              <p class="property-name">${propertyTitle}</p>
+              <p><strong>Check-in:</strong> ${new Date(checkIn).toLocaleDateString()}</p>
+              <p><strong>Check-out:</strong> ${new Date(checkOut).toLocaleDateString()}</p>
+              <p><strong>Current Status:</strong> <span class="status">${status?.replace("_", " ").toUpperCase() || "UPDATED"}</span></p>
             </div>
             
             <p>You can check your booking status anytime using the link below:</p>
@@ -181,7 +207,7 @@ export function generateBookingStatusUpdateEmail(booking: any, property: any, ne
   }
 }
 
-export async function sendBookingStatusUpdateEmail(booking: any, property: any, newStatus: string) {
-  const emailData = generateBookingStatusUpdateEmail(booking, property, newStatus)
+export async function sendBookingStatusUpdateEmail(bookingData: BookingEmailData) {
+  const emailData = generateBookingStatusUpdateEmail(bookingData)
   return sendEmail(emailData)
 }
